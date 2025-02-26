@@ -6,11 +6,12 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# 删除 root 目录下的 cf.sh
+rm -f /root/cf.sh >/dev/null 2>&1
+
 # 设置下载目录为 root 目录下的 cf 目录
 DOWNLOAD_DIR="/root/cf"
-
-# 创建 cf 目录（如果不存在）
-mkdir -p "${DOWNLOAD_DIR}"
+mkdir -p "${DOWNLOAD_DIR}" >/dev/null 2>&1
 
 # 检测系统架构
 ARCH=$(uname -m)
@@ -53,53 +54,35 @@ BASE_URL="${PROXY_URL}https://raw.githubusercontent.com/rdone4425/qita/main/cf"
 download_file() {
     local url="$1"
     local output="$2"
-    # 检查文件是否存在且非空
-    if [ ! -s "${output}" ]; then
-        echo "正在下载 ${output}..."
+    if [ ! -s "${output}" ] >/dev/null 2>&1; then
         if command -v curl >/dev/null 2>&1; then
-            curl -L -o "${output}" "${url}"
+            curl -s -L -o "${output}" "${url}" >/dev/null 2>&1
         elif command -v wget >/dev/null 2>&1; then
-            wget -O "${output}" "${url}"
+            wget -q -O "${output}" "${url}" >/dev/null 2>&1
         else
             echo "错误: 请安装 curl 或 wget"
             return 1
         fi
-        echo "下载完成: ${output}"
-    else
-        echo "文件已存在且非空，跳过下载: ${output}"
     fi
 }
 
-# 下载二进制文件
-download_file "${BASE_URL}/${BINARY}" "${DOWNLOAD_DIR}/cf"
-[ -f "${DOWNLOAD_DIR}/cf" ] && chmod +x "${DOWNLOAD_DIR}/cf"
+# 静默下载所有文件
+download_file "${BASE_URL}/${BINARY}" "${DOWNLOAD_DIR}/cf" >/dev/null 2>&1
+download_file "${BASE_URL}/ips-v4.txt" "${DOWNLOAD_DIR}/ipv4.txt" >/dev/null 2>&1
+download_file "${BASE_URL}/ips-v6.txt" "${DOWNLOAD_DIR}/ipv6.txt" >/dev/null 2>&1
+download_file "${BASE_URL}/locations.json" "${DOWNLOAD_DIR}/locations.json" >/dev/null 2>&1
 
-# 下载 ipv4 文件
-download_file "${BASE_URL}/ips-v4.txt" "${DOWNLOAD_DIR}/ipv4.txt"
-
-# 下载 ipv6 文件
-download_file "${BASE_URL}/ips-v6.txt" "${DOWNLOAD_DIR}/ipv6.txt"
-
-# 下载 locations.json 文件
-download_file "${BASE_URL}/locations.json" "${DOWNLOAD_DIR}/locations.json"
-
-# 检查下载的文件是否为空
+# 静默检查文件
 check_file() {
     local file="$1"
-    if [ ! -s "$file" ]; then
-        echo "警告: $file 是空文件，可能需要重新下载"
-    fi
+    [ ! -s "$file" ] && echo "警告: $file 下载失败" >/dev/null 2>&1
 }
 
-# 检查所有文件
-check_file "${DOWNLOAD_DIR}/cf"
-check_file "${DOWNLOAD_DIR}/ipv4.txt"
-check_file "${DOWNLOAD_DIR}/ipv6.txt"
-check_file "${DOWNLOAD_DIR}/locations.json"
+# 静默检查所有文件
+check_file "${DOWNLOAD_DIR}/cf" >/dev/null 2>&1
+check_file "${DOWNLOAD_DIR}/ipv4.txt" >/dev/null 2>&1
+check_file "${DOWNLOAD_DIR}/ipv6.txt" >/dev/null 2>&1
+check_file "${DOWNLOAD_DIR}/locations.json" >/dev/null 2>&1
 
-echo "完成！文件位于 ${DOWNLOAD_DIR}/ 目录下"
-echo "文件列表："
-echo "1. cf (二进制文件，已设置执行权限)"
-echo "2. ipv4.txt"
-echo "3. ipv6.txt"
-echo "4. locations.json"
+[ -f "${DOWNLOAD_DIR}/cf" ] && chmod +x "${DOWNLOAD_DIR}/cf" >/dev/null 2>&1
+echo "完成" && exit 0
