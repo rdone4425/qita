@@ -1,0 +1,48 @@
+name: Merge IP Lists
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # 每6小时运行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Merge IP Lists
+        run: |
+          # 下载两个源文件
+          curl -sSL "https://gitlab.com/rdone4425/ip/-/raw/main/merged_all.txt" -o file1.txt
+          curl -sSL "https://raw.githubusercontent.com/rdone44/juhe/refs/heads/main/ip_list.txt" -o file2.txt
+          
+          # 合并文件并排序去重
+          cat file1.txt file2.txt | sort -u > merged_ips.txt
+          
+          # 删除临时文件
+          rm file1.txt file2.txt
+
+      - name: Commit and Push
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          
+          # 检查文件是否有变化
+          if git diff --quiet merged_ips.txt; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          
+          git add merged_ips.txt
+          git commit -m "Update merged IP lists [skip ci]"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
