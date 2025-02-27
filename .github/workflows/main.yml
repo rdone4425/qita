@@ -18,17 +18,20 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: Merge IP Lists
+      - name: Create Directory and Merge IP Lists
         run: |
+          # 创建目标目录
+          mkdir -p ip_lists
+          
           # 下载两个源文件
-          curl -sSL "https://gitlab.com/rdone4425/ip/-/raw/main/merged_all.txt" -o file1.txt
-          curl -sSL "https://raw.githubusercontent.com/rdone44/juhe/refs/heads/main/ip_list.txt" -o file2.txt
+          curl -sSL "https://gitlab.com/rdone4425/ip/-/raw/main/merged_all.txt" -o temp1.txt
+          curl -sSL "https://raw.githubusercontent.com/rdone44/juhe/refs/heads/main/ip_list.txt" -o temp2.txt
           
           # 合并文件并排序去重
-          cat file1.txt file2.txt | sort -u > merged_ips.txt
+          cat temp1.txt temp2.txt | sort -u > ip_lists/merged_ips.txt
           
           # 删除临时文件
-          rm file1.txt file2.txt
+          rm temp1.txt temp2.txt
 
       - name: Commit and Push
         run: |
@@ -36,12 +39,13 @@ jobs:
           git config --local user.name "GitHub Action"
           
           # 检查文件是否有变化
-          if git diff --quiet merged_ips.txt; then
+          git add ip_lists/merged_ips.txt
+          
+          if git diff --staged --quiet; then
             echo "No changes to commit"
             exit 0
           fi
           
-          git add merged_ips.txt
           git commit -m "Update merged IP lists [skip ci]"
           git push
         env:
