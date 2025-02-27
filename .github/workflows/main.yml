@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.REPO_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -35,10 +37,9 @@ jobs:
 
       - name: Commit and Push
         run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
           
-          # 检查文件是否有变化
           git add ip_lists/merged_ips.txt
           
           if git diff --staged --quiet; then
@@ -49,4 +50,4 @@ jobs:
           git commit -m "Update merged IP lists [skip ci]"
           git push
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }} 
