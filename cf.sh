@@ -24,6 +24,11 @@ INSTALL_DIR="./cloudflare-client"
 TMP_DIR="/tmp/cf_download"
 mkdir -p $TMP_DIR
 
+# 脚本版本
+SCRIPT_VERSION="1.0"
+# 远程版本检查URL
+VERSION_CHECK_URL="${REPO_URL}/version.txt"
+
 # 获取本地IPv4地址 - BusyBox兼容版
 get_local_ipv4() {
     local ipv4=""
@@ -109,18 +114,83 @@ get_local_ipv6() {
     fi
 }
 
+# 检查更新
+check_update() {
+    echo -e "${BLUE}正在检查更新...${NC}"
+    
+    # 下载远程版本信息
+    if command -v curl &> /dev/null; then
+        REMOTE_VERSION=$(curl -s "$VERSION_CHECK_URL" | grep -o "^[0-9]\+\.[0-9]\+")
+    elif command -v wget &> /dev/null; then
+        REMOTE_VERSION=$(wget -qO- "$VERSION_CHECK_URL" | grep -o "^[0-9]\+\.[0-9]\+")
+    else
+        echo -e "${YELLOW}无法检查更新：需要 curl 或 wget${NC}"
+        return 1
+    fi
+    
+    # 检查是否成功获取远程版本
+    if [ -z "$REMOTE_VERSION" ]; then
+        echo -e "${YELLOW}无法获取远程版本信息${NC}"
+        return 1
+    fi
+    
+    # 比较版本
+    if [ $(echo "$REMOTE_VERSION > $SCRIPT_VERSION" | bc -l) -eq 1 ]; then
+        echo -e "${GREEN}发现新版本: $REMOTE_VERSION (当前版本: $SCRIPT_VERSION)${NC}"
+        echo -n "是否更新? [y/n]: "
+        read update_choice
+        
+        if [[ "$update_choice" == "y" || "$update_choice" == "Y" ]]; then
+            # 下载新版本
+            echo -e "${BLUE}正在下载新版本...${NC}"
+            
+            # 备份当前脚本
+            cp "$0" "$0.bak"
+            echo -e "${BLUE}已备份当前脚本到 $0.bak${NC}"
+            
+            # 下载新版本
+            if command -v curl &> /dev/null; then
+                curl -s -o "$0" "${REPO_URL}/cf.sh"
+                UPDATE_STATUS=$?
+            elif command -v wget &> /dev/null; then
+                wget -q -O "$0" "${REPO_URL}/cf.sh"
+                UPDATE_STATUS=$?
+            fi
+            
+            if [ $UPDATE_STATUS -eq 0 ]; then
+                chmod +x "$0"
+                echo -e "${GREEN}更新成功！正在重启脚本...${NC}"
+                sleep 2
+                exec "$0"
+                exit 0
+            else
+                echo -e "${RED}更新失败，恢复备份...${NC}"
+                mv "$0.bak" "$0"
+                chmod +x "$0"
+            fi
+        else
+            echo -e "${BLUE}已取消更新${NC}"
+        fi
+    else
+        echo -e "${GREEN}已是最新版本 ($SCRIPT_VERSION)${NC}"
+    fi
+    
+    return 0
+}
+
 # 显示菜单
 show_menu() {
     clear
     
-    echo -e "${BLUE}=== Cloudflare IP优选工具 ===${NC}"
+    echo -e "${BLUE}=== Cloudflare IP优选工具 v$SCRIPT_VERSION ===${NC}"
     echo
     echo -e "${CYAN}1.${NC} IPv4优选 (仅优选IPv4地址)"
     echo -e "${CYAN}2.${NC} IPv6优选 (仅优选IPv6地址)"
     echo -e "${CYAN}3.${NC} 组合优选 (同时优选IPv4和IPv6地址)"
+    echo -e "${CYAN}4.${NC} 检查更新"
     echo -e "${CYAN}0.${NC} 退出"
     echo
-    echo -n "请输入选项 [0-3]: "
+    echo -n "请输入选项 [0-4]: "
 }
 
 # 检测系统架构
@@ -301,47 +371,10 @@ check_ipv6_connectivity() {
     local ipv6=$(get_local_ipv6)
     if [ "$ipv6" = "无IPv6地址" ]; then
         echo -e "${YELLOW}警告: 未检测到IPv6地址，IPv6优选可能无法正常工作${NC}"
-        
-        # 询问用户是否继续
-        echo -n "是否仍然继续IPv6优选? [y/N] "
-        read -r continue_ipv6
-        
-        if [[ ! "$continue_ipv6" =~ ^[Yy]$ ]]; then
-            return 1
-        fi
         return 0
     fi
     
-    # 尝试使用ping6命令
-    echo -e "${CYAN}尝试使用ping6连接到Google IPv6 DNS (2001:4860:4860::8888)...${NC}"
-    if command -v ping6 &> /dev/null; then
-        ping6 -c 3 2001:4860:4860::8888
-        PING6_STATUS=$?
-    else
-        echo "ping6命令不可用，尝试使用ping -6"
-        PING6_STATUS=1
-    fi
-    
-    # 如果ping6失败，尝试使用ping命令
-    if [ $PING6_STATUS -ne 0 ]; then
-        echo -e "${CYAN}尝试使用ping连接到Google IPv6 DNS (2001:4860:4860::8888)...${NC}"
-        ping -6 -c 3 2001:4860:4860::8888 2>/dev/null
-        PING_STATUS=$?
-        
-        if [ $PING_STATUS -ne 0 ]; then
-            echo -e "${YELLOW}警告: 无法连接到IPv6网络，IPv6优选可能无法正常工作${NC}"
-            echo -e "${YELLOW}您的网络环境可能不支持IPv6，或者IPv6连接不稳定${NC}"
-            
-            # 询问用户是否继续
-            echo -n "是否仍然继续IPv6优选? [y/N] "
-            read -r continue_ipv6
-            
-            if [[ ! "$continue_ipv6" =~ ^[Yy]$ ]]; then
-                return 1
-            fi
-        fi
-    fi
-    
+    # 直接返回成功，不进行ping测试和用户确认
     return 0
 }
 
@@ -429,15 +462,8 @@ ipv6_optimize() {
         return 1
     fi
     
-    # 检查IPv6连接
+    # 检查IPv6连接 (现在这个函数只会显示警告，不会询问用户)
     check_ipv6_connectivity
-    if [ $? -ne 0 ]; then
-        echo -e "${YELLOW}已取消IPv6优选。${NC}"
-        echo
-        echo "按任意键返回主菜单..."
-        read -n 1
-        return 1
-    fi
     
     # 执行IPv6优选
     cd "$INSTALL_DIR"
@@ -518,6 +544,12 @@ main() {
                 ;;
             3)
                 combined_optimize
+                ;;
+            4)
+                check_update
+                echo
+                echo "按任意键返回主菜单..."
+                read -n 1
                 ;;
             0)
                 echo -e "${GREEN}感谢使用，再见!${NC}"
