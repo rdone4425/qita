@@ -41,14 +41,8 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # 暂存当前更改
-          git stash
-          
           # 拉取最新的更改
           git pull origin main
-          
-          # 恢复暂存的更改
-          git stash pop
           
           # 添加更改并提交
           git add ip_lists/merged_ips.txt
