@@ -1,567 +1,1517 @@
 #!/bin/bash
 
-# 脚本名称: cf_download.sh
-# 描述: 检测系统架构并下载对应的Cloudflare客户端工具，提供IP优选功能
-# 版本: 1.0
+# 检查是否有 root 权限
+if [ "$EUID" -ne 0 ]; then 
+    echo "请使用 sudo 运行此脚本"
+    exit 1
+fi
 
-# 定义颜色
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # 无颜色
+# 清理屏幕
+clear
 
-# 仓库URL
-REPO_URL="https://github.com/rdone4425/qita/raw/main/cf"
-# 代理URL前缀
-PROXY_PREFIX="https://git.442595.xyz/proxy/"
+# 删除 root 目录下的 cf.sh
+rm -f /root/youxuan.sh >/dev/null 2>&1
 
-# 安装目录
-INSTALL_DIR="./cloudflare-client"
+# 设置变量
+DOWNLOAD_DIR="/root/youxuan/download"  # 所有下载的文件都放在这个目录
+RESULT_DIR="/root/youxuan/results"     # 测速结果放在这个目录
 
-# 创建临时目录
-TMP_DIR="/tmp/cf_download"
-mkdir -p $TMP_DIR
-
-# 脚本版本
-SCRIPT_VERSION="1.0"
-# 远程版本检查URL
-VERSION_CHECK_URL="${REPO_URL}/version.txt"
-
-# 获取本地IPv4地址 - BusyBox兼容版
-get_local_ipv4() {
-    local ipv4=""
-    
-    # 方法1: 使用ip命令 (BusyBox兼容)
-    if command -v ip &> /dev/null; then
-        ipv4=$(ip -4 addr | grep -o "inet [0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | grep -v "127.0.0.1" | awk '{print $2}' | head -n 1)
-    fi
-    
-    # 方法2: 使用ifconfig命令 (BusyBox兼容)
-    if [ -z "$ipv4" ] && command -v ifconfig &> /dev/null; then
-        ipv4=$(ifconfig | grep -o "inet addr:[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | grep -v "127.0.0.1" | awk -F: '{print $2}' | head -n 1)
-        if [ -z "$ipv4" ]; then
-            ipv4=$(ifconfig | grep -o "inet [0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | grep -v "127.0.0.1" | awk '{print $2}' | head -n 1)
-        fi
-    fi
-    
-    # 方法3: 使用hostname命令
-    if [ -z "$ipv4" ] && command -v hostname &> /dev/null; then
-        ipv4=$(hostname -I 2>/dev/null | awk '{print $1}')
-    fi
-    
-    # 方法4: 检查特定接口
-    if [ -z "$ipv4" ]; then
-        for iface in eth0 eth1 en0 ens33 enp0s3 br0 br-lan wlan0; do
-            if ifconfig $iface 2>/dev/null | grep -q "inet "; then
-                ipv4=$(ifconfig $iface | grep -o "inet addr:[0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | awk -F: '{print $2}')
-                if [ -z "$ipv4" ]; then
-                    ipv4=$(ifconfig $iface | grep -o "inet [0-9]*\.[0-9]*\.[0-9]*\.[0-9]*" | awk '{print $2}')
-                fi
-                if [ ! -z "$ipv4" ]; then
-                    break
-                fi
-            fi
-        done
-    fi
-    
-    # 输出结果
-    if [ -z "$ipv4" ]; then
-        echo "无IPv4地址"
-    else
-        echo "$ipv4"
-    fi
-}
-
-# 获取本地IPv6地址 - BusyBox兼容版
-get_local_ipv6() {
-    local ipv6=""
-    
-    # 方法1: 使用ip命令 (BusyBox兼容)
-    if command -v ip &> /dev/null; then
-        ipv6=$(ip -6 addr | grep -o "inet6 [0-9a-fA-F:]*" | grep -v "::1" | awk '{print $2}' | head -n 1)
-    fi
-    
-    # 方法2: 使用ifconfig命令 (BusyBox兼容)
-    if [ -z "$ipv6" ] && command -v ifconfig &> /dev/null; then
-        ipv6=$(ifconfig | grep -o "inet6 addr: [0-9a-fA-F:]*" | grep -v "::1" | awk '{print $3}' | head -n 1)
-        if [ -z "$ipv6" ]; then
-            ipv6=$(ifconfig | grep -o "inet6 [0-9a-fA-F:]*" | grep -v "::1" | awk '{print $2}' | head -n 1)
-        fi
-    fi
-    
-    # 方法3: 检查特定接口
-    if [ -z "$ipv6" ]; then
-        for iface in eth0 eth1 en0 ens33 enp0s3 br0 br-lan wlan0; do
-            if ifconfig $iface 2>/dev/null | grep -q "inet6 "; then
-                ipv6=$(ifconfig $iface | grep -o "inet6 addr: [0-9a-fA-F:]*" | awk '{print $3}')
-                if [ -z "$ipv6" ]; then
-                    ipv6=$(ifconfig $iface | grep -o "inet6 [0-9a-fA-F:]*" | awk '{print $2}')
-                fi
-                if [ ! -z "$ipv6" ]; then
-                    break
-                fi
-            fi
-        done
-    fi
-    
-    # 输出结果
-    if [ -z "$ipv6" ]; then
-        echo "无IPv6地址"
-    else
-        echo "$ipv6"
-    fi
-}
-
-# 检查更新
-check_update() {
-    echo -e "${BLUE}正在检查更新...${NC}"
-    
-    # 下载远程版本信息
-    if command -v curl &> /dev/null; then
-        REMOTE_VERSION=$(curl -s "$VERSION_CHECK_URL" | grep -o "^[0-9]\+\.[0-9]\+")
-    elif command -v wget &> /dev/null; then
-        REMOTE_VERSION=$(wget -qO- "$VERSION_CHECK_URL" | grep -o "^[0-9]\+\.[0-9]\+")
-    else
-        echo -e "${YELLOW}无法检查更新：需要 curl 或 wget${NC}"
-        return 1
-    fi
-    
-    # 检查是否成功获取远程版本
-    if [ -z "$REMOTE_VERSION" ]; then
-        echo -e "${YELLOW}无法获取远程版本信息${NC}"
-        return 1
-    fi
-    
-    # 比较版本
-    if [ $(echo "$REMOTE_VERSION > $SCRIPT_VERSION" | bc -l) -eq 1 ]; then
-        echo -e "${GREEN}发现新版本: $REMOTE_VERSION (当前版本: $SCRIPT_VERSION)${NC}"
-        echo -n "是否更新? [y/n]: "
-        read update_choice
-        
-        if [[ "$update_choice" == "y" || "$update_choice" == "Y" ]]; then
-            # 下载新版本
-            echo -e "${BLUE}正在下载新版本...${NC}"
-            
-            # 备份当前脚本
-            cp "$0" "$0.bak"
-            echo -e "${BLUE}已备份当前脚本到 $0.bak${NC}"
-            
-            # 下载新版本
-            if command -v curl &> /dev/null; then
-                curl -s -o "$0" "${REPO_URL}/cf.sh"
-                UPDATE_STATUS=$?
-            elif command -v wget &> /dev/null; then
-                wget -q -O "$0" "${REPO_URL}/cf.sh"
-                UPDATE_STATUS=$?
-            fi
-            
-            if [ $UPDATE_STATUS -eq 0 ]; then
-                chmod +x "$0"
-                echo -e "${GREEN}更新成功！正在重启脚本...${NC}"
-                sleep 2
-                exec "$0"
-                exit 0
-            else
-                echo -e "${RED}更新失败，恢复备份...${NC}"
-                mv "$0.bak" "$0"
-                chmod +x "$0"
-            fi
-        else
-            echo -e "${BLUE}已取消更新${NC}"
-        fi
-    else
-        echo -e "${GREEN}已是最新版本 ($SCRIPT_VERSION)${NC}"
-    fi
-    
-    return 0
-}
-
-# 显示菜单
-show_menu() {
-    clear
-    
-    echo -e "${BLUE}=== Cloudflare IP优选工具 v$SCRIPT_VERSION ===${NC}"
-    echo
-    echo -e "${CYAN}1.${NC} IPv4优选 (仅优选IPv4地址)"
-    echo -e "${CYAN}2.${NC} IPv6优选 (仅优选IPv6地址)"
-    echo -e "${CYAN}3.${NC} 组合优选 (同时优选IPv4和IPv6地址)"
-    echo -e "${CYAN}4.${NC} 检查更新"
-    echo -e "${CYAN}0.${NC} 退出"
-    echo
-    echo -n "请输入选项 [0-4]: "
-}
+# 创建必要的目录
+mkdir -p "${DOWNLOAD_DIR}" >/dev/null 2>&1
+mkdir -p "${RESULT_DIR}" >/dev/null 2>&1
 
 # 检测系统架构
-detect_arch() {
-    echo "正在检测系统架构..."
-    ARCH=$(uname -m)
-    OS=$(uname -s)
+ARCH=$(uname -m)
+case ${ARCH} in
+    x86_64)  BINARY="amd64" ;;
+    i386|i686)  BINARY="386" ;;
+    aarch64)  BINARY="arm64" ;;
+    armv7l|armv6l)  BINARY="arm" ;;
+    mips64)  BINARY="mips64" ;;
+    mips64le)  BINARY="mips64le" ;;
+    mipsle)  BINARY="mipsle" ;;
+    *)
+        echo "不支持的系统架构: ${ARCH}"
+        exit 1
+        ;;
+esac
 
-    # 确定下载的文件名
-    case $ARCH in
-        x86_64)
-            CF_ARCH="amd64"
-            ;;
-        i386|i686)
-            CF_ARCH="386"
-            ;;
-        armv7*|armv6*|armv5*)
-            CF_ARCH="arm"
-            ;;
-        aarch64|armv8*|arm64)
-            CF_ARCH="arm64"
-            ;;
-        mips64)
-            CF_ARCH="mips64"
-            ;;
-        mips64le)
-            CF_ARCH="mips64le"
-            ;;
-        mipsle)
-            CF_ARCH="mipsle"
-            ;;
-        *)
-            echo -e "${RED}错误: 不支持的系统架构: $ARCH${NC}"
-            exit 1
-            ;;
-    esac
+# 配置文件路径 - 保持在父目录
+CONFIG_FILE="/root/youxuan/config.json"
+PROXY_LIST_FILE="/root/youxuan/proxy_list.conf"
 
-    echo -e "${GREEN}检测到系统架构: $ARCH (将使用 $CF_ARCH 版本)${NC}"
+# 默认代理 URL 列表
+DEFAULT_PROXY_URLS=(
+    "https://git.442595.xyz/proxy/"
+    "https://mirror.ghproxy.com/"
+    "https://ghproxy.com/"
+)
+
+# 初始化配置文件
+init_config() {
+    if [ ! -f "$CONFIG_FILE" ]; then
+        cat > "$CONFIG_FILE" << EOF
+{
+    "current_proxy": 0,
+    "proxy_urls": [
+        "https://git.442595.xyz/proxy/",
+        "https://mirror.ghproxy.com/",
+        "https://ghproxy.com/"
+    ],
+    "selected_countries": [],
+    "top_n_results": 5,
+    "ports": [443, 2053, 2083, 2087, 2096, 8443],
+    "gitlab": {
+        "repo_url": "",
+        "token": "",
+        "branch": "main"
+    }
+}
+EOF
+    else
+        # 如果配置文件存在但不包含必要字段，添加它们
+        local temp_file=$(mktemp)
+        
+        if ! jq -e '.selected_countries' "$CONFIG_FILE" >/dev/null 2>&1; then
+            jq '. + {"selected_countries": []}' "$CONFIG_FILE" > "$temp_file"
+            mv "$temp_file" "$CONFIG_FILE"
+        fi
+        
+        if ! jq -e '.gitlab' "$CONFIG_FILE" >/dev/null 2>&1; then
+            jq '. + {"gitlab": {"repo_url": "", "token": "", "branch": "main"}}' "$CONFIG_FILE" > "$temp_file"
+            mv "$temp_file" "$CONFIG_FILE"
+        else
+            if ! jq -e '.gitlab.repo_url' "$CONFIG_FILE" >/dev/null 2>&1; then
+                jq '.gitlab.repo_url = ""' "$CONFIG_FILE" > "$temp_file"
+                mv "$temp_file" "$CONFIG_FILE"
+            fi
+            
+            if ! jq -e '.gitlab.branch' "$CONFIG_FILE" >/dev/null 2>&1; then
+                jq '.gitlab.branch = "main"' "$CONFIG_FILE" > "$temp_file"
+                mv "$temp_file" "$CONFIG_FILE"
+            fi
+        fi
+    fi
 }
 
-# 下载客户端和配置文件
-download_client() {
-    # 检测系统架构
-    detect_arch
-    
-    # 在当前目录创建新目录
-    mkdir -p "$INSTALL_DIR"
-
-    # 下载二进制文件
-    echo "正在下载 Cloudflare 客户端..."
-    CF_URL="${PROXY_PREFIX}${REPO_URL}/${CF_ARCH}"
-    CF_PATH="$TMP_DIR/cf"
-
-    if command -v curl &> /dev/null; then
-        curl -L -o "$CF_PATH" "$CF_URL"
-        DOWNLOAD_STATUS=$?
-    elif command -v wget &> /dev/null; then
-        wget -O "$CF_PATH" "$CF_URL"
-        DOWNLOAD_STATUS=$?
+# 获取所有代理 URL
+get_proxy_urls() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        # 使用 jq 来正确解析 JSON 文件
+        PROXY_URLS=($(jq -r '.proxy_urls[]' "$CONFIG_FILE"))
     else
-        echo -e "${RED}错误: 需要 curl 或 wget 来下载文件，但都未安装。${NC}"
-        rm -rf "$INSTALL_DIR"
+        # 如果配置文件不存在或格式错误，使用默认值并重新初始化配置
+        PROXY_URLS=("${DEFAULT_PROXY_URLS[@]}")
+        init_config
+    fi
+}
+
+# 获取当前代理 URL
+get_current_proxy() {
+    get_proxy_urls
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        local current_index=$(jq -r '.current_proxy' "$CONFIG_FILE")
+        if [ -n "${PROXY_URLS[$current_index]}" ]; then
+            echo "${PROXY_URLS[$current_index]}"
+        else
+            echo "${PROXY_URLS[0]}"
+        fi
+    else
+        echo "${DEFAULT_PROXY_URLS[0]}"
+    fi
+}
+
+# 添加新代理
+add_proxy() {
+    echo "请输入新的代理 URL（格式如 https://example.com/）："
+    read -p "> " new_proxy
+    
+    # 验证 URL 格式
+    if [[ ! "$new_proxy" =~ ^https?:// ]]; then
+        echo "错误：无效的 URL 格式"
         return 1
     fi
-
-    if [ $DOWNLOAD_STATUS -ne 0 ]; then
-        echo -e "${RED}通过代理下载失败，尝试直接下载...${NC}"
-        
-        if command -v curl &> /dev/null; then
-            curl -L -o "$CF_PATH" "${REPO_URL}/${CF_ARCH}"
-            DOWNLOAD_STATUS=$?
-        elif command -v wget &> /dev/null; then
-            wget -O "$CF_PATH" "${REPO_URL}/${CF_ARCH}"
-            DOWNLOAD_STATUS=$?
-        fi
-        
-        if [ $DOWNLOAD_STATUS -ne 0 ]; then
-            echo -e "${RED}下载失败，请检查网络连接或仓库地址。${NC}"
-            rm -rf "$INSTALL_DIR"
+    
+    # 确保 URL 以 / 结尾
+    [[ "$new_proxy" != */ ]] && new_proxy="${new_proxy}/"
+    
+    # 检查是否已存在
+    get_proxy_urls
+    for url in "${PROXY_URLS[@]}"; do
+        if [ "$url" == "$new_proxy" ]; then
+            echo "该代理 URL 已存在"
             return 1
         fi
-    fi
-
-    # 下载配置文件
-    echo "正在下载配置文件..."
-    CONFIG_FILES=("ips-v4.txt" "ips-v6.txt" "locations.json")
-
-    for file in "${CONFIG_FILES[@]}"; do
-        CONFIG_URL="${PROXY_PREFIX}${REPO_URL}/${file}"
-        
-        if command -v curl &> /dev/null; then
-            curl -L -o "$TMP_DIR/$file" "$CONFIG_URL"
-            DL_STATUS=$?
-        elif command -v wget &> /dev/null; then
-            wget -O "$TMP_DIR/$file" "$CONFIG_URL"
-            DL_STATUS=$?
-        fi
-        
-        if [ $DL_STATUS -ne 0 ]; then
-            echo -e "${YELLOW}通过代理下载配置文件 $file 失败，尝试直接下载...${NC}"
-            
-            if command -v curl &> /dev/null; then
-                curl -L -o "$TMP_DIR/$file" "${REPO_URL}/${file}"
-            elif command -v wget &> /dev/null; then
-                wget -O "$TMP_DIR/$file" "${REPO_URL}/${file}"
-            fi
-            
-            if [ $? -ne 0 ]; then
-                echo -e "${YELLOW}警告: 无法下载配置文件 $file${NC}"
-            fi
-        fi
     done
-
-    # 设置执行权限
-    chmod +x "$CF_PATH"
-
-    # 复制文件到安装目录
-    cp "$CF_PATH" "$INSTALL_DIR/cf"
-    for file in "${CONFIG_FILES[@]}"; do
-        if [ -f "$TMP_DIR/$file" ]; then
-            cp "$TMP_DIR/$file" "$INSTALL_DIR/"
-        fi
-    done
-
-    # 清理临时文件
-    rm -rf "$TMP_DIR"
-
-    echo -e "${GREEN}Cloudflare 客户端已下载到 $INSTALL_DIR/cf${NC}"
-    echo -e "${GREEN}配置文件已保存到 $INSTALL_DIR/目录${NC}"
+    
+    # 添加新代理到配置文件
+    local temp_file=$(mktemp)
+    jq --arg url "$new_proxy" '.proxy_urls += [$url]' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+    echo "成功添加新代理 URL"
 }
 
-# 检查客户端是否已安装
-check_client_installed() {
-    if [ ! -f "$INSTALL_DIR/cf" ]; then
-        echo -e "${YELLOW}Cloudflare 客户端未安装，正在下载...${NC}"
-        download_client
-        if [ $? -ne 0 ]; then
-            return 1
+# 删除代理
+delete_proxy() {
+    get_proxy_urls
+    echo "选择要删除的代理 URL："
+    for i in "${!PROXY_URLS[@]}"; do
+        echo "$((i+1)). ${PROXY_URLS[$i]}"
+    done
+    echo "0. 取消"
+    
+    read -p "请选择 [0-${#PROXY_URLS[@]}]: " del_choice
+    
+    if [[ "$del_choice" =~ ^[0-9]+$ ]] && [ "$del_choice" -ge 1 ] && [ "$del_choice" -le "${#PROXY_URLS[@]}" ]; then
+        local current_index=$(jq -r '.current_proxy' "$CONFIG_FILE")
+        local del_index=$((del_choice-1))
+        
+        # 更新配置文件
+        local temp_file=$(mktemp)
+        jq "del(.proxy_urls[$del_index])" "$CONFIG_FILE" > "$temp_file"
+        
+        # 如果删除的是当前使用的代理，重置为第一个代理
+        if [ "$del_index" -eq "$current_index" ]; then
+            jq '.current_proxy = 0' "$temp_file" > "$CONFIG_FILE"
+        elif [ "$del_index" -lt "$current_index" ]; then
+            # 如果删除的代理位于当前代理之前，更新索引
+            jq ".current_proxy = $((current_index-1))" "$temp_file" > "$CONFIG_FILE"
+        else
+            mv "$temp_file" "$CONFIG_FILE"
         fi
+        
+        rm -f "$temp_file"
+        echo "代理已删除"
+    elif [ "$del_choice" != "0" ]; then
+        echo "无效的选择"
+    fi
+}
+
+# 切换代理 URL
+switch_proxy() {
+    clear
+    echo "================================"
+    echo "      代理服务器设置            "
+    echo "================================"
+    echo "当前代理: $(get_current_proxy)"
+    echo
+    get_proxy_urls
+    if [ ${#PROXY_URLS[@]} -gt 0 ]; then
+        echo "可用代理列表:"
+        for i in "${!PROXY_URLS[@]}"; do
+            echo "$((i+1)). ${PROXY_URLS[$i]}"
+        done
+    else
+        echo "当前没有可用的代理"
+    fi
+    echo "--------------------------------"
+    echo "a. 添加新代理"
+    echo "d. 删除代理"
+    echo "0. 返回主菜单"
+    echo "================================"
+    
+    read -p "请选择 [0-${#PROXY_URLS[@]}/a/d]: " proxy_choice
+    
+    case $proxy_choice in
+        [0-9]*)
+            if [ "$proxy_choice" -ge 1 ] && [ "$proxy_choice" -le "${#PROXY_URLS[@]}" ]; then
+                local temp_file=$(mktemp)
+                jq ".current_proxy = $((proxy_choice-1))" "$CONFIG_FILE" > "$temp_file"
+                mv "$temp_file" "$CONFIG_FILE"
+                update_base_url
+                echo "代理服务器已更新"
+            elif [ "$proxy_choice" != "0" ]; then
+                echo "无效的选择"
+            fi
+            ;;
+        [aA])
+            add_proxy
+            ;;
+        [dD])
+            delete_proxy
+            ;;
+        *)
+            echo "无效的选择"
+            ;;
+    esac
+    
+    read -p "按回车键继续..."
+}
+
+# 更新基础 URL
+update_base_url() {
+    PROXY_URL=$(get_current_proxy)
+    BASE_URL="${PROXY_URL}https://raw.githubusercontent.com/rdone4425/qita/main/cf"
+}
+
+# 进度条函数
+show_progress() {
+    local prefix="$1"
+    echo -n "${prefix} ["
+    for ((i=0; i<25; i++)); do
+        echo -n " "
+    done
+    echo -n "] 0%"
+    
+    local i=0
+    while [ $i -le 25 ]; do
+        echo -ne "\r${prefix} ["
+        for ((j=0; j<i; j++)); do
+            echo -n "="
+        done
+        for ((j=i; j<25; j++)); do
+            echo -n " "
+        done
+        local percentage=$((i * 4))
+        echo -n "] ${percentage}%"
+        i=$((i + 1))
+        sleep 0.1
+    done
+    echo
+}
+
+# 清理旧的测试结果
+clean_old_results() {
+    local prefix="$1"
+    
+    # 删除旧的 CSV 文件
+    rm -f "${DOWNLOAD_DIR}/${prefix}.csv" >/dev/null 2>&1
+    
+    # 删除旧的国家结果文件
+    local selected_countries=($(get_selected_countries))
+    for country in "${selected_countries[@]}"; do
+        rm -f "${DOWNLOAD_DIR}/${country}_${prefix}.txt" >/dev/null 2>&1
+    done
+}
+
+# 下载文件
+download_file() {
+    local url="$1"
+    local output_file="$2"
+    local retry_count=3
+    
+    # 确保输出目录存在
+    mkdir -p "$(dirname "$output_file")" >/dev/null 2>&1
+    
+    echo "正在下载: $url"
+    echo "保存到: $output_file"
+    
+    # 尝试下载文件
+    while [ $retry_count -gt 0 ]; do
+        if curl -s -L --connect-timeout 10 --retry 3 "$url" -o "$output_file"; then
+            echo "下载成功"
+            return 0
+        fi
+        echo "下载失败，重试中..."
+        retry_count=$((retry_count-1))
+    done
+    
+    echo "下载失败，已达到最大重试次数"
+    return 1
+}
+
+# 检查文件
+check_files() {
+    # 检查必要的文件是否存在
+    if [ ! -f "${DOWNLOAD_DIR}/cf" ]; then
+        echo "CF 程序不存在"
+        return 1
+    fi
+    
+    if [ ! -f "${DOWNLOAD_DIR}/ips-v4.txt" ]; then
+        echo "IPv4 列表不存在"
+        return 1
+    fi
+    
+    if [ ! -f "${DOWNLOAD_DIR}/ips-v6.txt" ]; then
+        echo "IPv6 列表不存在"
+        return 1
+    fi
+    
+    if [ ! -f "${DOWNLOAD_DIR}/locations.json" ]; then
+        echo "位置信息不存在"
+        return 1
+    fi
+    
+    return 0
+}
+
+# 下载所有必要文件
+download_all_files() {
+    update_base_url
+    local download_success=true
+    
+    # 创建目录
+    echo "使用下载目录: ${DOWNLOAD_DIR}"
+    if ! mkdir -p "${DOWNLOAD_DIR}"; then
+        echo "错误: 无法创建下载目录"
+        return 1
+    fi
+    
+    # 下载文件
+    echo "正在下载 CloudflareST..."
+    download_file "${BASE_URL}/${BINARY}" "${DOWNLOAD_DIR}/cf" || download_success=false
+    
+    echo "正在下载 IP 列表..."
+    download_file "${BASE_URL}/ips-v4.txt" "${DOWNLOAD_DIR}/ips-v4.txt" || download_success=false
+    download_file "${BASE_URL}/ips-v6.txt" "${DOWNLOAD_DIR}/ips-v6.txt" || download_success=false
+    
+    echo "正在下载位置信息..."
+    download_file "${BASE_URL}/locations.json" "${DOWNLOAD_DIR}/locations.json" || download_success=false
+    
+    if [ "$download_success" = false ]; then
+        echo "错误: 部分文件下载失败"
+        return 1
+    fi
+    
+    # 设置执行权限
+    chmod +x "${DOWNLOAD_DIR}/cf"
+    
+    # 验证文件权限
+    if [ ! -x "${DOWNLOAD_DIR}/cf" ]; then
+        echo "错误: 无法设置 CF 程序执行权限"
+        return 1
+    fi
+    
+    echo "所有文件下载完成，保存在: ${DOWNLOAD_DIR}"
+    return 0
+}
+
+# 显示主菜单
+show_menu() {
+    clear
+    echo "================================"
+    echo "      CloudFlare IP 优选工具    "
+    echo "================================"
+    echo "1. IPv4 优选测速"
+    echo "2. IPv6 优选测速"
+    echo "3. IPv4+IPv6 优选测速"
+    echo "4. 切换代理服务器"
+    echo "5. 选择测试国家"
+    echo "6. 设置优选数量"
+    echo "7. 设置保存端口"
+    echo "8. GitLab 设置"
+    echo "0. 退出"
+    echo "================================"
+    echo -n "请输入你的选择 [0-8]: "
+}
+
+# 检查文件函数
+check_file() {
+    local file="$1"
+    if [ ! -f "$file" ] || [ ! -s "$file" ]; then
+        return 1
     fi
     return 0
 }
 
-# 显示系统IP信息
-show_ip_info() {
-    echo -e "${BLUE}系统IP信息:${NC}"
-    echo "----------------------------------------"
-    
-    # 显示主机名
-    echo -e "${CYAN}主机名:${NC} $(hostname)"
-    
-    # 显示IPv4地址
-    echo -e "${CYAN}IPv4地址:${NC}"
-    if command -v ip &> /dev/null; then
-        ip -4 addr | grep inet | grep -v "127.0.0.1"
-    elif command -v ifconfig &> /dev/null; then
-        ifconfig | grep -E "inet addr:|inet " | grep -v "127.0.0.1"
-    else
-        echo "无法获取IPv4地址信息 (需要ip或ifconfig命令)"
+# 获取当前选择的国家列表
+get_selected_countries() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.selected_countries[]' "$CONFIG_FILE" 2>/dev/null
     fi
-    
-    # 显示IPv6地址
-    echo -e "${CYAN}IPv6地址:${NC}"
-    if command -v ip &> /dev/null; then
-        ip -6 addr | grep inet6 | grep -v "::1"
-    elif command -v ifconfig &> /dev/null; then
-        ifconfig | grep -E "inet6 addr:|inet6 " | grep -v "::1"
-    else
-        echo "无法获取IPv6地址信息 (需要ip或ifconfig命令)"
-    fi
-    
-    echo "----------------------------------------"
 }
 
-# 检查IPv6连接
-check_ipv6_connectivity() {
-    # 检查是否有IPv6地址
-    local ipv6=$(get_local_ipv6)
-    if [ "$ipv6" = "无IPv6地址" ]; then
-        echo -e "${YELLOW}警告: 未检测到IPv6地址，IPv6优选可能无法正常工作${NC}"
+# 获取国家过滤器
+get_country_filter() {
+    local selected_countries=($(get_selected_countries))
+    if [ ${#selected_countries[@]} -eq 0 ]; then
+        return 1
+    fi
+    
+    local filter=""
+    for country in "${selected_countries[@]}"; do
+        if [ -n "$filter" ]; then
+            filter="${filter}|"
+        fi
+        filter="${filter}${country}"
+    done
+    
+    echo "$filter"
+    return 0
+}
+
+# 获取配置的端口列表
+get_ports() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.ports[]' "$CONFIG_FILE"
+    else
+        echo "443"  # 默认只使用443端口
+    fi
+}
+
+# 保存带端口的 IP 地址
+save_ip_with_ports() {
+    local ip_line="$1"
+    local country="$2"  # 单个国家代码
+    local ip=$(echo "$ip_line" | cut -d',' -f1)
+    local ports=($(get_ports))
+    local result=""
+    
+    for port in "${ports[@]}"; do
+        if [[ "$ip" == *:* ]]; then
+            # IPv6 地址
+            result+="[${ip}]:${port}#${country}"
+        else
+            # IPv4 地址
+            result+="${ip}:${port}#${country}"
+        fi
+        
+        # 只在不是最后一个端口时添加换行符
+        if [ "$port" != "${ports[-1]}" ]; then
+            result+="\n"
+        fi
+    done
+    
+    echo -e "$result"
+}
+
+# 获取 GitLab 仓库 URL
+get_gitlab_repo_url() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.gitlab.repo_url' "$CONFIG_FILE"
+    else
+        echo ""  # 默认为空
+    fi
+}
+
+# 设置 GitLab 仓库 URL
+set_gitlab_repo_url() {
+    local url="$1"
+    local temp_file=$(mktemp)
+    jq --arg url "$url" '.gitlab.repo_url = $url' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 获取 GitLab Token
+get_gitlab_token() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.gitlab.token' "$CONFIG_FILE"
+    else
+        echo ""  # 默认为空
+    fi
+}
+
+# 设置 GitLab Token
+set_gitlab_token() {
+    local token="$1"
+    local temp_file=$(mktemp)
+    jq --arg token "$token" '.gitlab.token = $token' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 获取 GitLab 分支
+get_gitlab_branch() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.gitlab.branch' "$CONFIG_FILE"
+    else
+        echo "main"  # 默认值
+    fi
+}
+
+# 设置 GitLab 分支
+set_gitlab_branch() {
+    local branch="$1"
+    local temp_file=$(mktemp)
+    jq --arg branch "$branch" '.gitlab.branch = $branch' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 获取 GitLab 项目 ID
+get_gitlab_project_id() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.gitlab.project_id' "$CONFIG_FILE"
+    else
+        echo ""  # 默认为空
+    fi
+}
+
+# 设置 GitLab 项目 ID
+set_gitlab_project_id() {
+    local id="$1"
+    local temp_file=$(mktemp)
+    jq --arg id "$id" '.gitlab.project_id = $id' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 检查 GitLab 配置是否完整
+is_gitlab_configured() {
+    local repo_url=$(get_gitlab_repo_url)
+    local token=$(get_gitlab_token)
+    local project_id=$(get_gitlab_project_id)
+    
+    if [ -n "$repo_url" ] && [ -n "$token" ] && [ -n "$project_id" ]; then
+        return 0  # 配置完整
+    else
+        return 1  # 配置不完整
+    fi
+}
+
+# 合并所有国家的结果文件
+merge_result_files() {
+    local ip_type="$1"  # ipv4 或 ipv6 或 all
+    local output_file="${RESULT_DIR}/merged_${ip_type}.txt"
+    local selected_countries=($(get_selected_countries))
+    
+    echo "正在合并所有国家的结果文件..."
+    
+    # 清空输出文件
+    > "$output_file"
+    
+    # 合并所有国家的文件
+    if [ "$ip_type" = "all" ]; then
+        # 合并 IPv4 和 IPv6 的结果
+        for country in "${selected_countries[@]}"; do
+            if [ -f "${RESULT_DIR}/${country}_ipv4.txt" ]; then
+                cat "${RESULT_DIR}/${country}_ipv4.txt" >> "$output_file"
+                # 删除单独的国家文件
+                rm -f "${RESULT_DIR}/${country}_ipv4.txt"
+            fi
+            if [ -f "${RESULT_DIR}/${country}_ipv6.txt" ]; then
+                cat "${RESULT_DIR}/${country}_ipv6.txt" >> "$output_file"
+                # 删除单独的国家文件
+                rm -f "${RESULT_DIR}/${country}_ipv6.txt"
+            fi
+        done
+    else
+        # 只合并指定类型的结果
+        for country in "${selected_countries[@]}"; do
+            if [ -f "${RESULT_DIR}/${country}_${ip_type}.txt" ]; then
+                cat "${RESULT_DIR}/${country}_${ip_type}.txt" >> "$output_file"
+                # 删除单独的国家文件
+                rm -f "${RESULT_DIR}/${country}_${ip_type}.txt"
+            fi
+        done
+    fi
+    
+    # 检查合并后的文件是否为空
+    if [ -s "$output_file" ]; then
+        echo "所有结果已合并到: $output_file"
+        echo "单独的国家文件已删除"
+        echo "合并后的文件内容:"
+        cat "$output_file"
+        
+        # 上传到 GitLab
+        if is_gitlab_configured; then
+            echo "正在将合并后的文件上传到 GitLab..."
+            if upload_to_gitlab "$output_file"; then
+                echo "文件已成功上传到 GitLab"
+            else
+                echo "上传到 GitLab 失败"
+            fi
+        else
+            echo "GitLab 未配置，跳过上传"
+        fi
+    else
+        echo "没有找到可合并的结果文件"
+        rm -f "$output_file"  # 删除空文件
+    fi
+}
+
+# 上传到 GitLab
+upload_to_gitlab() {
+    local file="$1"
+    local repo_url=$(get_gitlab_repo_url)
+    local token=$(get_gitlab_token)
+    local branch=$(get_gitlab_branch)
+    local project_id=$(get_gitlab_project_id)
+    
+    if [ -z "$repo_url" ] || [ -z "$token" ] || [ -z "$project_id" ]; then
+        echo "GitLab 配置不完整，无法上传"
+        return 1
+    fi
+    
+    local filename=$(basename "$file")
+    local content=$(cat "$file")
+    local timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
+    local commit_message="Update IP list - $timestamp"
+    
+    echo "正在上传到 GitLab 仓库..."
+    echo "仓库URL: $repo_url"
+    echo "项目ID: $project_id"
+    echo "分支: $branch"
+    echo "文件名: $filename"
+    
+    # 构建 API URL
+    local gitlab_domain=$(echo "$repo_url" | cut -d'/' -f3)
+    local api_url="https://${gitlab_domain}/api/v4/projects"
+    
+    # 检查文件是否存在
+    local file_exists=$(curl -s --header "PRIVATE-TOKEN: $token" \
+        "${api_url}/${project_id}/repository/files/${filename}?ref=${branch}" \
+        | jq -r '.message // empty')
+    
+    # 准备 JSON 数据，正确处理内容中的特殊字符
+    local json_data=$(jq -n \
+        --arg branch "$branch" \
+        --arg content "$content" \
+        --arg message "$commit_message" \
+        '{"branch": $branch, "content": $content, "commit_message": $message}')
+    
+    if [[ "$file_exists" == *"404 File Not Found"* ]] || [[ "$file_exists" == *"doesn't exist"* ]]; then
+        # 文件不存在，创建它
+        echo "文件不存在，创建新文件..."
+        curl -s --request POST --header "PRIVATE-TOKEN: $token" \
+            --header "Content-Type: application/json" \
+            --data "$json_data" \
+            "${api_url}/${project_id}/repository/files/${filename}"
+        
+        local status=$?
+        if [ $status -ne 0 ]; then
+            echo "错误: 文件创建失败 (状态码: $status)"
+            return 1
+        fi
+    else
+        # 文件存在，更新它
+        echo "文件已存在，更新文件..."
+        curl -s --request PUT --header "PRIVATE-TOKEN: $token" \
+            --header "Content-Type: application/json" \
+            --data "$json_data" \
+            "${api_url}/${project_id}/repository/files/${filename}"
+        
+        local status=$?
+        if [ $status -ne 0 ]; then
+            echo "错误: 文件更新失败 (状态码: $status)"
+            return 1
+        fi
+    fi
+    
+    echo "上传完成"
+    return 0
+}
+
+# 设置 GitLab 菜单
+set_gitlab_menu() {
+    clear
+    echo "================================"
+    echo "      GitLab 设置               "
+    echo "================================"
+    echo "当前 GitLab 配置:"
+    echo "仓库 URL: $(get_gitlab_repo_url)"
+    echo "项目 ID: $(get_gitlab_project_id)"
+    echo "Token: $(if [ -n "$(get_gitlab_token)" ]; then echo "已设置"; else echo "未设置"; fi)"
+    echo "分支: $(get_gitlab_branch)"
+    echo
+    echo "1. 设置仓库 URL"
+    echo "2. 设置项目 ID"
+    echo "3. 设置 Token"
+    echo "4. 设置分支"
+    echo "5. 测试连接"
+    echo "0. 返回主菜单"
+    echo "================================"
+    
+    read -p "请选择 [0-5]: " gitlab_choice
+    
+    case $gitlab_choice in
+        1)
+            read -p "请输入 GitLab 仓库 URL (例如 https://gitlab.com): " repo_url
+            set_gitlab_repo_url "$repo_url"
+            echo "仓库 URL 已更新"
+            ;;
+        2)
+            read -p "请输入 GitLab 项目 ID: " project_id
+            set_gitlab_project_id "$project_id"
+            echo "项目 ID 已更新"
+            ;;
+        3)
+            read -p "请输入 GitLab 访问令牌: " token
+            set_gitlab_token "$token"
+            echo "Token 已更新"
+            ;;
+        4)
+            read -p "请输入分支名称 [默认: main]: " branch
+            branch=${branch:-main}
+            set_gitlab_branch "$branch"
+            echo "分支已更新"
+            ;;
+        5)
+            test_gitlab_connection
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "无效的选择"
+            ;;
+    esac
+    
+    read -p "按回车键继续..."
+}
+
+# 测试 GitLab 连接
+test_gitlab_connection() {
+    local repo_url=$(get_gitlab_repo_url)
+    local token=$(get_gitlab_token)
+    local project_id=$(get_gitlab_project_id)
+    
+    if [ -z "$repo_url" ] || [ -z "$token" ] || [ -z "$project_id" ]; then
+        echo "GitLab 配置不完整，请先完成配置"
+        return 1
+    fi
+    
+    echo "正在测试 GitLab 连接..."
+    
+    # 构建 API URL
+    local api_url="${repo_url}/api/v4/projects/${project_id}"
+    
+    # 发送请求
+    local http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+        --header "PRIVATE-TOKEN: $token" \
+        "${api_url}")
+    
+    # 检查响应
+    if [ "$http_code" -eq 200 ]; then
+        echo "连接成功！GitLab 配置有效"
+        return 0
+    else
+        echo "连接失败，HTTP 状态码: $http_code"
+        echo "请检查您的 GitLab 配置"
+        return 1
+    fi
+}
+
+# 处理测速结果
+process_test_results() {
+    local ip_type="$1"
+    local result_file="${DOWNLOAD_DIR}/${ip_type}.csv"
+    local selected_countries=($(get_selected_countries))
+    local top_n=$(get_top_n_results)
+    local locations_file="${DOWNLOAD_DIR}/locations.json"
+    
+    echo "正在处理测速结果..."
+    
+    # 如果没有选择国家，使用所有结果
+    if [ ${#selected_countries[@]} -eq 0 ]; then
+        echo "未选择特定国家，使用所有测速结果"
         return 0
     fi
     
-    # 直接返回成功，不进行ping测试和用户确认
-    return 0
+    # 检查 locations.json 文件
+    if [ ! -f "$locations_file" ]; then
+        echo "错误: locations.json 文件不存在于 ${locations_file}"
+        echo "尝试重新下载..."
+        download_file "${BASE_URL}/locations.json" "$locations_file"
+    fi
+    
+    echo "使用位置文件: $locations_file"
+    
+    # 确保结果目录存在
+    mkdir -p "${RESULT_DIR}" >/dev/null 2>&1
+    
+    # 过滤结果
+    if [ -f "${result_file}" ]; then
+        # 显示CSV文件的前几行，用于调试
+        echo "CSV文件内容示例:"
+        head -n 3 "${result_file}"
+        
+        # 获取所有选中的国家
+        for country in "${selected_countries[@]}"; do
+            # 尝试获取国家名称
+            local country_name=""
+            if [ -f "$locations_file" ]; then
+                # 尝试不同的 JSON 路径，并只取第一行结果
+                country_name=$(jq -r --arg code "$country" '.[] | select(.cca2==$code) | .country' "$locations_file" 2>/dev/null | head -n 1)
+                
+                if [ -z "$country_name" ] || [ "$country_name" == "null" ]; then
+                    country_name=$(jq -r --arg code "$country" '.[] | select(.code==$code) | .name' "$locations_file" 2>/dev/null | head -n 1)
+                fi
+                
+                if [ -z "$country_name" ] || [ "$country_name" == "null" ]; then
+                    country_name=$(jq -r --arg code "$country" '.[$code] | .name' "$locations_file" 2>/dev/null | head -n 1)
+                fi
+            fi
+            
+            # 如果仍然没有找到国家名称，使用国家代码
+            if [ -z "$country_name" ] || [ "$country_name" == "null" ]; then
+                country_name="$country"
+            fi
+            
+            echo "== $country ($country_name) =="
+            
+            # 直接从CSV文件中提取匹配的行
+            local ip_list=$(grep -i "$country" "${result_file}" | sort -t ',' -k3,3n | head -n "$top_n" | cut -d ',' -f1)
+            
+            if [ -n "$ip_list" ]; then
+                # 将结果保存到 RESULT_DIR 目录，添加端口和国家标记
+                local country_file="${RESULT_DIR}/${country}_${ip_type}.txt"
+                > "$country_file"  # 清空文件
+                
+                while IFS= read -r ip; do
+                    local ports=($(get_ports))
+                    for port in "${ports[@]}"; do
+                        if [[ "$ip" == *:* ]]; then
+                            # IPv6 地址
+                            echo "[${ip}]:${port}#${country}" >> "$country_file"
+                        else
+                            # IPv4 地址
+                            echo "${ip}:${port}#${country}" >> "$country_file"
+                        fi
+                    done
+                done <<< "$ip_list"
+                
+                echo "IP 列表已保存到: $country_file"
+                
+                # 显示结果（仅显示第一个端口的结果）
+                local display_list=""
+                while IFS= read -r ip; do
+                    local port="${ports[0]}"
+                    if [[ "$ip" == *:* ]]; then
+                        # IPv6 地址
+                        display_list+="[${ip}]:${port}#${country}\n"
+                    else
+                        # IPv4 地址
+                        display_list+="${ip}:${port}#${country}\n"
+                    fi
+                done <<< "$ip_list"
+                echo -e "$display_list"
+            else
+                echo "没有找到可用的 IP 地址"
+            fi
+            echo "----------------------------------------"
+        done
+    else
+        echo "结果文件不存在: ${result_file}"
+    fi
 }
 
-# 显示测速结果
-display_results() {
-    local result_file="$1"
-    local ip_type="$2"
+# 修改 run_ip_test 函数，添加合并功能
+run_ip_test() {
+    local ip_version="$1"  # 4 或 6
+    local top_n=$(get_top_n_results)
+    local result_file="${DOWNLOAD_DIR}/ipv${ip_version}.csv"
     
-    if [ ! -f "$result_file" ]; then
-        echo -e "${YELLOW}警告: 结果文件 $result_file 不存在${NC}"
-        echo -e "${RED}未发现有效的${ip_type}地址，请检查您的网络连接或尝试其他优选选项${NC}"
-        return 1
-    fi
+    # 清理旧文件
+    clean_old_results "ipv${ip_version}"
     
-    # 检查文件是否为空
-    if [ ! -s "$result_file" ]; then
-        echo -e "${YELLOW}警告: 结果文件 $result_file 为空${NC}"
-        echo -e "${RED}未发现有效的${ip_type}地址，请检查您的网络连接或尝试其他优选选项${NC}"
-        return 1
-    fi
-    
-    echo -e "${GREEN}$ip_type 优选结果:${NC}"
-    echo "----------------------------------------"
-    
-    # 显示前10个结果
-    head -n 10 "$result_file"
-    
-    echo "----------------------------------------"
-    echo -e "${GREEN}结果已保存到 $result_file${NC}"
-    
-    # 复制最佳IP到当前目录
-    if [ -f "$result_file" ] && [ -s "$result_file" ]; then
-        # 提取第一行（最佳IP）
-        BEST_IP=$(head -n 1 "$result_file" | cut -d ',' -f 1)
-        if [ ! -z "$BEST_IP" ]; then
-            echo "$BEST_IP" > "best_${ip_type,,}.txt"
-            echo -e "${GREEN}最佳IP已保存到 best_${ip_type,,}.txt${NC}"
+    if ! check_files; then
+        echo "正在下载所需文件..."
+        if ! download_all_files; then
+            echo "文件下载失败，无法继续测速"
+            return 1
         fi
     fi
-}
-
-# IPv4优选
-ipv4_optimize() {
-    echo -e "${BLUE}开始IPv4优选...${NC}"
     
-    # 检查客户端是否已安装
-    check_client_installed
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}客户端安装失败，无法进行优选。${NC}"
-        return 1
-    fi
-    
-    # 显示系统IP信息
-    show_ip_info
-    
-    # 执行IPv4优选
-    cd "$INSTALL_DIR"
-    ./cf -ips 4 -outfile ipv4.csv
-    
-    # 检查优选是否成功
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}IPv4优选失败，请检查网络连接或尝试其他选项。${NC}"
-        echo
-        echo "按任意键返回主菜单..."
-        read -n 1
-        return 1
-    fi
-    
-    # 显示结果
-    display_results "ipv4.csv" "IPv4"
-    
-    echo
-    echo "按任意键返回主菜单..."
-    read -n 1
-}
-
-# IPv6优选
-ipv6_optimize() {
-    echo -e "${BLUE}开始IPv6优选...${NC}"
-    
-    # 检查客户端是否已安装
-    check_client_installed
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}客户端安装失败，无法进行优选。${NC}"
-        return 1
-    fi
-    
-    # 检查IPv6连接 (现在这个函数只会显示警告，不会询问用户)
-    check_ipv6_connectivity
-    
-    # 执行IPv6优选
-    cd "$INSTALL_DIR"
-    ./cf -ips 6 -outfile ipv6.csv
-    
-    # 检查优选是否成功
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}IPv6优选失败，请检查网络连接或尝试其他选项。${NC}"
-        echo
-        echo "按任意键返回主菜单..."
-        read -n 1
-        return 1
-    fi
-    
-    # 显示结果
-    display_results "ipv6.csv" "IPv6"
-    
-    echo
-    echo "按任意键返回主菜单..."
-    read -n 1
-}
-
-# 组合优选
-combined_optimize() {
-    echo -e "${BLUE}开始组合优选(IPv4+IPv6)...${NC}"
-    
-    # 检查客户端是否已安装
-    check_client_installed
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}客户端安装失败，无法进行优选。${NC}"
-        return 1
-    fi
-    
-    # 显示系统IP信息
-    show_ip_info
-    
-    # 执行IPv4优选
-    cd "$INSTALL_DIR"
-    echo -e "${CYAN}正在优选IPv4地址...${NC}"
-    ./cf -ips 4 -outfile ipv4.csv
-    
-    # 显示IPv4结果
-    display_results "ipv4.csv" "IPv4"
-    
-    echo
-    
-    # 检查IPv6连接
-    check_ipv6_connectivity
-    if [ $? -eq 0 ]; then
-        echo -e "${CYAN}正在优选IPv6地址...${NC}"
-        ./cf -ips 6 -outfile ipv6.csv
+    if [ -x "${DOWNLOAD_DIR}/cf" ]; then
+        cd "${DOWNLOAD_DIR}"
         
-        # 显示IPv6结果
-        display_results "ipv6.csv" "IPv6"
+        # 检查是否有选择的国家
+        local selected_countries=($(get_selected_countries))
+        if [ ${#selected_countries[@]} -eq 0 ]; then
+            echo "请先选择测试国家（菜单选项5）"
+            return 1
+        fi
+        
+        echo "开始测试 IPv${ip_version} 地址..."
+        
+        # 运行测速程序，将结果保存在下载目录
+        ./cf -ips "${ip_version}" -outfile "${result_file}"
+        
+        # 处理测速结果
+        process_test_results "ipv${ip_version}"
+        
+        # 合并结果文件
+        merge_result_files "ipv${ip_version}"
+        
+        echo "IPv${ip_version} 测速完成"
     else
-        echo -e "${YELLOW}已跳过IPv6优选。${NC}"
+        echo "错误: CF 程序不存在或没有执行权限"
+        return 1
+    fi
+}
+
+# 修改 run_both_test 函数，添加合并功能
+run_both_test() {
+    local top_n=$(get_top_n_results)
+    
+    # 清理旧文件
+    clean_old_results "ipv4"
+    clean_old_results "ipv6"
+    
+    if ! check_files; then
+        echo "正在下载所需文件..."
+        if ! download_all_files; then
+            echo "文件下载失败，无法继续测速"
+            return 1
+        fi
     fi
     
-    echo -e "${GREEN}组合优选完成!${NC}"
-    
+    if [ -x "${DOWNLOAD_DIR}/cf" ]; then
+        cd "${DOWNLOAD_DIR}"
+        
+        # 检查是否有选择的国家
+        local selected_countries=($(get_selected_countries))
+        if [ ${#selected_countries[@]} -eq 0 ]; then
+            echo "请先选择测试国家（菜单选项5）"
+            return 1
+        fi
+        
+        # 创建结果目录
+        mkdir -p "${RESULT_DIR}"
+        
+        # 运行 IPv4 测速
+        echo "运行 IPv4 测速..."
+        ./cf -ips 4 -outfile ipv4.csv
+        echo "----------------------------------------"
+        echo "IPv4 测速结果 (每个国家延迟前 ${top_n})："
+        echo "----------------------------------------"
+        
+        # 处理 IPv4 测速结果
+        process_test_results "ipv4"
+        
+        # 运行 IPv6 测速
+        echo "运行 IPv6 测速..."
+        ./cf -ips 6 -outfile ipv6.csv
+        echo "----------------------------------------"
+        echo "IPv6 测速结果 (每个国家延迟前 ${top_n})："
+        echo "----------------------------------------"
+        
+        # 处理 IPv6 测速结果
+        process_test_results "ipv6"
+        
+        # 合并所有结果文件
+        merge_result_files "all"
+        
+        echo "所有国家的IP列表已保存到: ${RESULT_DIR}/"
+    else
+        echo "错误: CF 程序不存在或没有执行权限"
+        return 1
+    fi
+}
+
+# 获取当前选择的城市列表
+get_selected_cities() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.selected_cities[]' "$CONFIG_FILE" 2>/dev/null
+    fi
+}
+
+# 更新选中的城市
+update_selected_cities() {
+    local cities=("$@")
+    local json_array=$(printf '%s\n' "${cities[@]}" | jq -R . | jq -s .)
+    local temp_file=$(mktemp)
+    jq --argjson cities "$json_array" '.selected_cities = $cities' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 获取每个城市显示的IP数量
+get_top_n_results() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.top_n_results' "$CONFIG_FILE"
+    else
+        echo "5"  # 默认值
+    fi
+}
+
+# 设置每个城市显示的IP数量
+set_top_n_results() {
+    local n="$1"
+    local temp_file=$(mktemp)
+    jq --arg n "$n" '.top_n_results = ($n|tonumber)' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 添加设置优选数量的菜单
+set_top_n_menu() {
+    clear
+    echo "================================"
+    echo "      优选数量设置              "
+    echo "================================"
+    echo "当前每个城市显示IP数量: $(get_top_n_results)"
     echo
-    echo "按任意键返回主菜单..."
-    read -n 1
+    read -p "请输入新的数量 (1-20): " new_n
+    
+    if [[ "$new_n" =~ ^[0-9]+$ ]] && [ "$new_n" -ge 1 ] && [ "$new_n" -le 20 ]; then
+        set_top_n_results "$new_n"
+        echo "设置已更新"
+    else
+        echo "无效的输入，请输入1-20之间的数字"
+    fi
+    
+    read -p "按回车键继续..."
+}
+
+# 从 locations.json 获取国家代码
+get_country_code() {
+    local airport_code="$1"
+    local locations_file="${DOWNLOAD_DIR}/locations.json"
+    
+    # 检查 locations.json 是否存在
+    if [ -f "$locations_file" ]; then
+        local country=$(jq -r --arg code "$airport_code" '.[] | select(.iata==$code) | .cca2' "$locations_file")
+        if [ -n "$country" ] && [ "$country" != "null" ]; then
+            echo "$country"
+            return
+        fi
+    fi
+    
+    echo "$airport_code"  # 如果找不到对应的国家代码，返回原始代码
+}
+
+# 处理 IP:端口 列表，添加国家代码
+process_ip_port_list() {
+    local input_file="$1"
+    local output_file="$2"
+    
+    # 确保输出目录存在
+    mkdir -p "$(dirname "$output_file")"
+    
+    # 清空输出文件
+    > "$output_file"
+    
+    # 获取所有选中的国家
+    local selected_countries=($(get_selected_countries))
+    
+    # 逐行处理输入文件
+    while IFS= read -r line; do
+        # 跳过空行
+        if [ -z "$line" ]; then
+            continue
+        fi
+        
+        # 提取 IP 和端口
+        if [[ "$line" =~ ([^:]+):([0-9]+) ]]; then
+            local ip_part="${BASH_REMATCH[1]}"
+            local port="${BASH_REMATCH[2]}"
+            
+            # 从文件名中提取国家代码
+            local country=""
+            local filename=$(basename "$input_file")
+            
+            # 如果文件名包含国家代码（例如 US_ipv4.txt），则提取它
+            if [[ "$filename" =~ ^([A-Z]{2})_ ]]; then
+                country="${BASH_REMATCH[1]}"
+            else
+                # 尝试从目录结构中查找国家代码
+                for country_code in "${selected_countries[@]}"; do
+                    if grep -q "$country_code" <<< "$input_file"; then
+                        country="$country_code"
+                        break
+                    fi
+                done
+                
+                # 如果仍然没有找到国家代码，使用默认值
+                if [ -z "$country" ]; then
+                    country="Unknown"
+                fi
+            fi
+            
+            # 输出格式化的行
+            if [[ "$ip_part" == *:* ]]; then
+                # IPv6 地址 - 确保只有一对方括号
+                if [[ "$ip_part" == \[*\] ]]; then
+                    # 已经有方括号，直接使用
+                    echo "${ip_part}:${port}#${country}" >> "$output_file"
+                else
+                    # 添加方括号
+                    echo "[${ip_part}]:${port}#${country}" >> "$output_file"
+                fi
+            else
+                # IPv4 地址
+                echo "${ip_part}:${port}#${country}" >> "$output_file"
+            fi
+        fi
+    done < "$input_file"
+}
+
+# 添加自动模式函数
+run_auto_mode() {
+    local test_type="${1:-both}"  # 默认为 both
+    
+    echo "开始自动测速，类型: $test_type..."
+    
+    # 检查文件
+    if ! check_files; then
+        echo "正在下载所需文件..."
+        if ! download_all_files; then
+            echo "文件下载失败，无法继续测速"
+            return 1
+        fi
+    fi
+    
+    # 根据测试类型运行相应的测速
+    case "$test_type" in
+        ipv4)
+            echo "运行 IPv4 测速..."
+            run_ip_test 4
+            # 合并 IPv4 结果文件
+            merge_result_files "ipv4"
+            ;;
+        ipv6)
+            echo "运行 IPv6 测速..."
+            run_ip_test 6
+            # 合并 IPv6 结果文件
+            merge_result_files "ipv6"
+            ;;
+        both|*)
+            echo "运行双栈测速..."
+            run_both_test
+            # 合并所有结果文件
+            merge_result_files "all"
+            ;;
+    esac
+    
+    echo "自动测速完成"
 }
 
 # 主函数
 main() {
-    while true; do
-        show_menu
-        read choice
+    # 初始化配置
+    init_config
+    update_base_url
+    
+    # 检查是否为自动模式
+    if [[ "$1" == "auto"* ]]; then
+        # 自动模式
+        local test_type="both"
         
-        case $choice in
-            1)
-                ipv4_optimize
-                ;;
-            2)
-                ipv6_optimize
-                ;;
-            3)
-                combined_optimize
-                ;;
-            4)
-                check_update
-                echo
-                echo "按任意键返回主菜单..."
-                read -n 1
-                ;;
-            0)
-                echo -e "${GREEN}感谢使用，再见!${NC}"
-                exit 0
-                ;;
-            *)
-                echo -e "${RED}无效选项，请重新选择。${NC}"
-                sleep 1
-                ;;
-        esac
-    done
+        # 检查是否指定了测试类型
+        if [ "$1" = "auto-ipv4" ]; then
+            test_type="ipv4"
+        elif [ "$1" = "auto-ipv6" ]; then
+            test_type="ipv6"
+        fi
+        
+        run_auto_mode "$test_type"
+        exit 0
+    else
+        # 交互模式
+        while true; do
+            show_menu
+            read choice
+            case $choice in
+                1)
+                    run_ipv4_test
+                    echo
+                    read -p "按回车键继续..."
+                    clear
+                    ;;
+                2)
+                    run_ipv6_test
+                    echo
+                    read -p "按回车键继续..."
+                    clear
+                    ;;
+                3)
+                    run_both_test
+                    echo
+                    read -p "按回车键继续..."
+                    clear
+                    ;;
+                4)
+                    switch_proxy
+                    clear
+                    ;;
+                5)
+                    select_countries
+                    clear
+                    ;;
+                6)
+                    set_top_n_menu
+                    clear
+                    ;;
+                7)
+                    set_ports_menu
+                    clear
+                    ;;
+                8)
+                    set_gitlab_menu
+                    clear
+                    ;;
+                0)
+                    echo "退出程序"
+                    exit 0
+                    ;;
+                *)
+                    echo "无效的选择，请重试"
+                    echo
+                    read -p "按回车键继续..."
+                    clear
+                    ;;
+            esac
+        done
+    fi
 }
 
 # 执行主函数
-main
+main "$@"
+
+# 获取配置的端口列表
+get_ports() {
+    if [ -f "$CONFIG_FILE" ] && jq -e . >/dev/null 2>&1 < "$CONFIG_FILE"; then
+        jq -r '.ports[]' "$CONFIG_FILE"
+    else
+        echo "443"  # 默认只使用443端口
+    fi
+}
+
+# 设置端口菜单
+set_ports_menu() {
+    clear
+    echo "================================"
+    echo "      端口设置                  "
+    echo "================================"
+    echo "当前端口列表:"
+    get_ports | tr '\n' ' '
+    echo
+    echo
+    echo "1. 添加端口"
+    echo "2. 删除端口"
+    echo "3. 恢复默认端口"
+    echo "0. 返回主菜单"
+    echo "================================"
+    
+    read -p "请选择 [0-3]: " port_choice
+    
+    case $port_choice in
+        1)
+            read -p "请输入要添加的端口 (1-65535): " new_port
+            if [[ "$new_port" =~ ^[0-9]+$ ]] && [ "$new_port" -ge 1 ] && [ "$new_port" -le 65535 ]; then
+                add_port "$new_port"
+                echo "端口已添加"
+            else
+                echo "无效的端口号"
+            fi
+            ;;
+        2)
+            delete_port
+            ;;
+        3)
+            reset_ports
+            echo "已恢复默认端口"
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "无效的选择"
+            ;;
+    esac
+    
+    read -p "按回车键继续..."
+}
+
+# 添加端口
+add_port() {
+    local new_port="$1"
+    local current_ports=($(get_ports))
+    
+    # 检查端口是否已存在
+    for port in "${current_ports[@]}"; do
+        if [ "$port" -eq "$new_port" ]; then
+            echo "端口已存在"
+            return 1
+        fi
+    done
+    
+    # 添加新端口
+    current_ports+=("$new_port")
+    update_ports "${current_ports[@]}"
+}
+
+# 删除端口
+delete_port() {
+    local current_ports=($(get_ports))
+    
+    echo "选择要删除的端口:"
+    for i in "${!current_ports[@]}"; do
+        echo "$((i+1)). ${current_ports[$i]}"
+    done
+    echo "0. 取消"
+    
+    read -p "请选择 [0-${#current_ports[@]}]: " del_choice
+    
+    if [[ "$del_choice" =~ ^[0-9]+$ ]] && [ "$del_choice" -ge 1 ] && [ "$del_choice" -le "${#current_ports[@]}" ]; then
+        local del_index=$((del_choice-1))
+        unset current_ports[$del_index]
+        update_ports "${current_ports[@]}"
+        echo "端口已删除"
+    elif [ "$del_choice" != "0" ]; then
+        echo "无效的选择"
+    fi
+}
+
+# 重置端口为默认值
+reset_ports() {
+    local default_ports=(443 2053 2083 2087 2096 8443)
+    update_ports "${default_ports[@]}"
+}
+
+# 更新端口列表
+update_ports() {
+    local ports=("$@")
+    local json_array=$(printf '%s\n' "${ports[@]}" | jq -R . | jq -s .)
+    local temp_file=$(mktemp)
+    jq --argjson ports "$json_array" '.ports = $ports' "$CONFIG_FILE" > "$temp_file"
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+# 选择测试国家
+select_countries() {
+    clear
+    echo "================================"
+    echo "      选择测试国家              "
+    echo "================================"
+    
+    # 获取当前选择的国家
+    local selected_countries=($(get_selected_countries))
+    
+    echo "当前选择的国家: ${selected_countries[*]:-无}"
+    echo
+    
+    # 检查 locations.json 文件
+    local locations_file="${DOWNLOAD_DIR}/locations.json"
+    if [ ! -f "$locations_file" ]; then
+        echo "正在下载位置信息..."
+        update_base_url
+        download_file "${BASE_URL}/locations.json" "$locations_file"
+    fi
+    
+    if [ ! -f "$locations_file" ]; then
+        echo "错误: 无法获取位置信息"
+        read -p "按回车键继续..."
+        return 1
+    fi
+    
+    # 获取可用的国家列表
+    echo "可用的国家列表:"
+    local countries=($(jq -r '.[] | .cca2' "$locations_file" 2>/dev/null | sort -u))
+    
+    if [ ${#countries[@]} -eq 0 ]; then
+        # 尝试其他可能的 JSON 路径
+        countries=($(jq -r '.[] | .code' "$locations_file" 2>/dev/null | sort -u))
+    fi
+    
+    if [ ${#countries[@]} -eq 0 ]; then
+        echo "错误: 无法从位置文件中提取国家代码"
+        read -p "按回车键继续..."
+        return 1
+    fi
+    
+    # 显示国家列表
+    local count=0
+    for country in "${countries[@]}"; do
+        # 获取国家名称
+        local country_name=$(jq -r --arg code "$country" '.[] | select(.cca2==$code) | .country' "$locations_file" 2>/dev/null | head -n 1)
+        
+        if [ -z "$country_name" ] || [ "$country_name" == "null" ]; then
+            country_name=$(jq -r --arg code "$country" '.[] | select(.code==$code) | .name' "$locations_file" 2>/dev/null | head -n 1)
+        fi
+        
+        if [ -z "$country_name" ] || [ "$country_name" == "null" ]; then
+            country_name="$country"
+        fi
+        
+        # 检查是否已选择
+        local selected=""
+        for sel in "${selected_countries[@]}"; do
+            if [ "$sel" == "$country" ]; then
+                selected="[已选]"
+                break
+            fi
+        done
+        
+        printf "%3d. %-5s %-20s %s\n" $((count+1)) "$country" "$country_name" "$selected"
+        count=$((count+1))
+        
+        # 每20个国家暂停一次
+        if [ $((count % 20)) -eq 0 ]; then
+            echo
+            read -p "按回车键查看更多国家，输入q退出..." key
+            if [ "$key" == "q" ] || [ "$key" == "Q" ]; then
+                break
+            fi
+            echo
+        fi
+    done
+    
+    echo
+    echo "操作选项:"
+    echo "a. 添加国家"
+    echo "r. 移除国家"
+    echo "c. 清除所有选择"
+    echo "0. 返回主菜单"
+    echo "================================"
+    
+    read -p "请选择操作 [a/r/c/0]: " op_choice
+    
+    case $op_choice in
+        [aA])
+            read -p "请输入要添加的国家代码 (例如 US,JP,HK): " add_countries
+            IFS=',' read -ra add_array <<< "$add_countries"
+            for country in "${add_array[@]}"; do
+                # 检查是否是有效的国家代码
+                if grep -q "^${country}$" <(printf '%s\n' "${countries[@]}"); then
+                    # 检查是否已经选择
+                    local already_selected=false
+                    for sel in "${selected_countries[@]}"; do
+                        if [ "$sel" == "$country" ]; then
+                            already_selected=true
+                            break
+                        fi
+                    done
+                    
+                    if [ "$already_selected" = false ]; then
+                        selected_countries+=("$country")
+                    fi
+                else
+                    echo "警告: $country 不是有效的国家代码"
+                fi
+            done
+            
+            # 更新配置
+            local json_array=$(printf '%s\n' "${selected_countries[@]}" | jq -R . | jq -s .)
+            local temp_file=$(mktemp)
+            jq --argjson countries "$json_array" '.selected_countries = $countries' "$CONFIG_FILE" > "$temp_file"
+            mv "$temp_file" "$CONFIG_FILE"
+            echo "国家已添加"
+            ;;
+        [rR])
+            if [ ${#selected_countries[@]} -eq 0 ]; then
+                echo "当前没有选择的国家"
+            else
+                echo "当前选择的国家:"
+                for i in "${!selected_countries[@]}"; do
+                    echo "$((i+1)). ${selected_countries[$i]}"
+                done
+                
+                read -p "请输入要移除的国家编号 (例如 1,3,5): " remove_indices
+                IFS=',' read -ra remove_array <<< "$remove_indices"
+                
+                # 从大到小排序，以便正确删除
+                IFS=$'\n' remove_array=($(sort -nr <<<"${remove_array[*]}"))
+                
+                for idx in "${remove_array[@]}"; do
+                    if [[ "$idx" =~ ^[0-9]+$ ]] && [ "$idx" -ge 1 ] && [ "$idx" -le "${#selected_countries[@]}" ]; then
+                        unset 'selected_countries[idx-1]'
+                    fi
+                done
+                
+                # 重新索引数组
+                selected_countries=("${selected_countries[@]}")
+                
+                # 更新配置
+                local json_array=$(printf '%s\n' "${selected_countries[@]}" | jq -R . | jq -s .)
+                local temp_file=$(mktemp)
+                jq --argjson countries "$json_array" '.selected_countries = $countries' "$CONFIG_FILE" > "$temp_file"
+                mv "$temp_file" "$CONFIG_FILE"
+                echo "国家已移除"
+            fi
+            ;;
+        [cC])
+            # 清除所有选择
+            local temp_file=$(mktemp)
+            jq '.selected_countries = []' "$CONFIG_FILE" > "$temp_file"
+            mv "$temp_file" "$CONFIG_FILE"
+            echo "所有国家选择已清除"
+            ;;
+        0)
+            return 0
+            ;;
+        *)
+            echo "无效的选择"
+            ;;
+    esac
+    
+    read -p "按回车键继续..."
+}
