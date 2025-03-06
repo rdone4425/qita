@@ -49,7 +49,7 @@ jobs:
           country_ips = defaultdict(list)
 
           # 使用 GeoIP2 数据库
-          reader = geoip2.database.Reader("GeoLite2-Country.mmdb")
+          reader = geoip2.database.Reader("data/GeoLite2-Country.mmdb")
 
           # 对IP进行分类
           for proxy in data["proxies"]:
