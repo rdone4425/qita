@@ -102,11 +102,11 @@ jobs:
                   try:
                       # 获取 IP 信息
                       response = reader.country(ip)
-                      country = response.country.name or "Unknown"
-                      country_ips[country].append(ip)
+                      country_code = response.country.iso_code or "XX"  # 使用 ISO 代码，未知用 XX
+                      country_ips[country_code].append(ip)
                       valid_ips.append(ip)
                   except:
-                      country_ips["Unknown"].append(ip)
+                      country_ips["XX"].append(ip)
                       valid_ips.append(ip)
 
               # 写入总的IP列表
@@ -115,8 +115,8 @@ jobs:
                       f.write(f"{ip}\n")
 
               # 为每个国家创建单独的文件
-              for country, ips in country_ips.items():
-                  filename = f"proxy_ips/ips_{country.lower().replace(" ", "_")}.txt"
+              for country_code, ips in country_ips.items():
+                  filename = f"proxy_ips/{country_code.lower()}.txt"
                   with open(filename, "w") as f:
                       for ip in ips:
                           f.write(f"{ip}\n")
@@ -127,7 +127,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add proxy_ips/ip_list.txt
-          git add proxy_ips/ips_*.txt
+          git add proxy_ips/*.txt
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "Update IP list with country classification"
             git pull --rebase
