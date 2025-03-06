@@ -98,10 +98,11 @@ jobs:
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add proxy_ips/
+          git add ip_list.txt
+          git add ips_*.txt
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Update IP list with country classification"
             git pull --rebase
+            git commit -m "Update IP list with country classification"
             git push
           fi
         env:
