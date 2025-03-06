@@ -6,7 +6,12 @@ on:
   workflow_dispatch:  # 允许手动触发
 
 jobs:
+  update-geoip:
+    uses: ./.github/workflows/update-geoip.yml
+    secrets: inherit
+    
   update-ip-list:
+    needs: update-geoip
     runs-on: ubuntu-latest
     
     steps:
