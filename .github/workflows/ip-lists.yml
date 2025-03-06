@@ -35,6 +35,9 @@ jobs:
           import os
           from collections import defaultdict
 
+          # Cloudflare ASN
+          CLOUDFLARE_ASNS = {13335, 209242}  # Cloudflare 的 ASN 号码
+
           # 创建目录
           os.makedirs("proxy_ips", exist_ok=True)
 
@@ -52,7 +55,12 @@ jobs:
           for proxy in data["proxies"]:
               ip = proxy["ip"]
               try:
+                  # 获取 IP 信息
                   response = reader.country(ip)
+                  # 跳过 Cloudflare IP
+                  if hasattr(response, "traits") and hasattr(response.traits, "autonomous_system_number"):
+                      if response.traits.autonomous_system_number in CLOUDFLARE_ASNS:
+                          continue
                   country = response.country.name or "Unknown"
                   country_ips[country].append(ip)
               except:
@@ -64,7 +72,15 @@ jobs:
           # 写入总的IP列表
           with open("proxy_ips/ip_list.txt", "w") as f:
               for proxy in data["proxies"]:
-                  f.write(f"{proxy["ip"]}\n")
+                  ip = proxy["ip"]
+                  try:
+                      response = reader.country(ip)
+                      if hasattr(response, "traits") and hasattr(response.traits, "autonomous_system_number"):
+                          if response.traits.autonomous_system_number in CLOUDFLARE_ASNS:
+                              continue
+                      f.write(f"{ip}\n")
+                  except:
+                      f.write(f"{ip}\n")
 
           # 为每个国家创建单独的文件
           for country, ips in country_ips.items():
