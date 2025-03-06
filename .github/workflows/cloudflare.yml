@@ -1,0 +1,79 @@
+name: Download CloudflareSpeedTest
+
+on:
+  workflow_dispatch:  # 允许手动触发
+  
+jobs:
+  download-and-extract:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Create working directory
+        run: mkdir -p CloudflareSpeedTest
+        
+      - name: Download all files
+        working-directory: CloudflareSpeedTest
+        run: |
+          # MacOS
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_darwin_amd64.zip
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_darwin_arm64.zip
+          
+          # Linux
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_386.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_amd64.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_arm64.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_armv5.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_armv6.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_armv7.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_mips.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_mips64.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_mipsle.tar.gz
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_linux_mips64le.tar.gz
+          
+          # Windows
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_windows_386.zip
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_windows_amd64.zip
+          wget https://github.com/XIU2/CloudflareSpeedTest/releases/download/v2.2.5/CloudflareST_windows_arm64.zip
+
+      - name: Create extraction directories
+        working-directory: CloudflareSpeedTest
+        run: |
+          mkdir -p extracted/windows extracted/linux extracted/macos
+
+      - name: Extract ZIP files
+        working-directory: CloudflareSpeedTest
+        run: |
+          for f in *.zip; do
+            if [[ $f == *"windows"* ]]; then
+              unzip -o "$f" -d extracted/windows/
+            elif [[ $f == *"darwin"* ]]; then
+              unzip -o "$f" -d extracted/macos/
+            fi
+          done
+
+      - name: Extract TAR.GZ files
+        working-directory: CloudflareSpeedTest
+        run: |
+          for f in *.tar.gz; do
+            tar -xzf "$f" -C extracted/linux/
+          done
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Commit and push changes
+        run: |
+          git add CloudflareSpeedTest/
+          git commit -m "Add CloudflareSpeedTest files"
+          git push
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: cloudflare-speedtest-files
+          path: CloudflareSpeedTest/extracted/
