@@ -129,7 +129,7 @@ jobs:
               }
               
               # 写入JSON文件
-              with open("proxy_ips/ip_list.json", "w", encoding='utf-8') as f:
+              with open("proxy_ips/ip_list.json", "w", encoding="utf-8") as f:
                   json.dump(json_data, f, indent=2, ensure_ascii=False)
 
               # 为每个国家创建单独的文件
