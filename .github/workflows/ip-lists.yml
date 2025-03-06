@@ -40,6 +40,7 @@ jobs:
           import ipaddress
           from collections import defaultdict
           import datetime
+          from datetime import UTC
 
           # Cloudflare IP 范围 (来自 XIU2/CloudflareSpeedTest)
           CLOUDFLARE_IPS = [
@@ -117,7 +118,7 @@ jobs:
 
               # 创建JSON格式数据
               json_data = {
-                  "updated_at": datetime.datetime.utcnow().isoformat(),
+                  "updated_at": datetime.datetime.now(UTC).isoformat(),
                   "total_ips": len(valid_ips),
                   "countries": {
                       country: {
