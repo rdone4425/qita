@@ -1,0 +1,84 @@
+{
+  "updated_at": "2025-03-06T13:45:51.579842+00:00",
+  "total_ips": 857,
+  "countries": {
+    "JP": {
+      "count": 61
+    },
+    "US": {
+      "count": 345
+    },
+    "KR": {
+      "count": 130
+    },
+    "FR": {
+      "count": 5
+    },
+    "NL": {
+      "count": 39
+    },
+    "HK": {
+      "count": 24
+    },
+    "SG": {
+      "count": 77
+    },
+    "DE": {
+      "count": 55
+    },
+    "IN": {
+      "count": 5
+    },
+    "GB": {
+      "count": 46
+    },
+    "CA": {
+      "count": 5
+    },
+    "IT": {
+      "count": 3
+    },
+    "BR": {
+      "count": 3
+    },
+    "AE": {
+      "count": 5
+    },
+    "ID": {
+      "count": 3
+    },
+    "VN": {
+      "count": 2
+    },
+    "MY": {
+      "count": 2
+    },
+    "TH": {
+      "count": 2
+    },
+    "PH": {
+      "count": 2
+    },
+    "AU": {
+      "count": 2
+    },
+    "IL": {
+      "count": 4
+    },
+    "SE": {
+      "count": 2
+    },
+    "XX": {
+      "count": 31
+    },
+    "MX": {
+      "count": 1
+    },
+    "TW": {
+      "count": 1
+    },
+    "CH": {
+      "count": 2
+    }
+  }
+}
