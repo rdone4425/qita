@@ -52,18 +52,26 @@ jobs:
         run: |
           for f in *.zip; do
             if [[ $f == *"windows"* ]]; then
-              unzip -o "$f" -d extracted/windows/
+              arch=$(echo $f | grep -o 'windows_[^.]*' | cut -d'_' -f2)
+              unzip -o "$f" -d "extracted/windows/"
+              mv "extracted/windows/CloudflareST.exe" "extracted/windows/CloudflareST_${arch}.exe"
             elif [[ $f == *"darwin"* ]]; then
-              unzip -o "$f" -d extracted/macos/
+              arch=$(echo $f | grep -o 'darwin_[^.]*' | cut -d'_' -f2)
+              unzip -o "$f" -d "extracted/macos/"
+              mv "extracted/macos/CloudflareST" "extracted/macos/CloudflareST_${arch}"
             fi
           done
+          rm *.zip  # 删除所有 zip 文件
 
       - name: Extract TAR.GZ files
         working-directory: CloudflareSpeedTest
         run: |
           for f in *.tar.gz; do
-            tar -xzf "$f" -C extracted/linux/
+            arch=$(echo $f | grep -o 'linux_[^.]*' | cut -d'_' -f2)
+            tar -xzf "$f" -C "extracted/linux/"
+            mv "extracted/linux/CloudflareST" "extracted/linux/CloudflareST_${arch}"
           done
+          rm *.tar.gz  # 删除所有 tar.gz 文件
 
       - name: Configure Git
         run: |
