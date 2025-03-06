@@ -21,23 +21,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install -U requests
           
       - name: Download and process IP list
         run: |
-          python3 - <<EOF
+          python3 -c '
           import json
           import requests
           
           # 下载IP列表
-          response = requests.get('https://ip.rdone.me/list')
+          response = requests.get("https://ip.rdone.me/list")
           data = response.json()
           
           # 提取IP地址并写入文件
-          with open('ip_list.txt', 'w') as f:
-              for proxy in data['proxies']:
-                  f.write(f"{proxy['ip']}\n")
-          EOF
+          with open("ip_list.txt", "w") as f:
+              for proxy in data["proxies"]:
+                  f.write(f"{proxy["ip"]}\n")
+          '
           
       - name: Commit and push if changed
         run: |
