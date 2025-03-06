@@ -121,8 +121,7 @@ jobs:
                   "total_ips": len(valid_ips),
                   "countries": {
                       country: {
-                          "count": len(ips),
-                          "ips": ips
+                          "count": len(ips)
                       }
                       for country, ips in country_ips.items()
                   }
