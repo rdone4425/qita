@@ -37,10 +37,47 @@ jobs:
           import requests
           import geoip2.database
           import os
+          import ipaddress
           from collections import defaultdict
 
-          # Cloudflare ASN
-          CLOUDFLARE_ASNS = {13335, 209242}  # Cloudflare 的 ASN 号码
+          # Cloudflare IP 范围 (来自 XIU2/CloudflareSpeedTest)
+          CLOUDFLARE_IPS = [
+              "173.245.48.0/20",
+              "103.21.244.0/22",
+              "103.22.200.0/22",
+              "103.31.4.0/22",
+              "141.101.64.0/18",
+              "108.162.192.0/18",
+              "190.93.240.0/20",
+              "188.114.96.0/20",
+              "197.234.240.0/22",
+              "198.41.128.0/17",
+              "162.158.0.0/15",
+              "104.16.0.0/12",
+              "172.64.0.0/17",
+              "172.64.128.0/18",
+              "172.64.192.0/19",
+              "172.64.224.0/22",
+              "172.64.229.0/24",
+              "172.64.230.0/23",
+              "172.64.232.0/21",
+              "172.64.240.0/21",
+              "172.64.248.0/21",
+              "172.65.0.0/16",
+              "172.66.0.0/16",
+              "172.67.0.0/16",
+              "131.0.72.0/22"
+          ]
+
+          # 转换 CIDR 为 IP 网络对象
+          cf_networks = [ipaddress.ip_network(cidr) for cidr in CLOUDFLARE_IPS]
+
+          def is_cloudflare_ip(ip):
+              try:
+                  ip_obj = ipaddress.ip_address(ip)
+                  return any(ip_obj in network for network in cf_networks)
+              except:
+                  return False
 
           # 创建目录
           os.makedirs("proxy_ips", exist_ok=True)
@@ -53,45 +90,36 @@ jobs:
           country_ips = defaultdict(list)
 
           # 使用 GeoIP2 数据库
-          reader = geoip2.database.Reader("data/GeoLite2-Country.mmdb")
-
-          # 对IP进行分类
-          for proxy in data["proxies"]:
-              ip = proxy["ip"]
-              try:
-                  # 获取 IP 信息
-                  response = reader.country(ip)
-                  # 跳过 Cloudflare IP
-                  if hasattr(response, "traits") and hasattr(response.traits, "autonomous_system_number"):
-                      if response.traits.autonomous_system_number in CLOUDFLARE_ASNS:
-                          continue
-                  country = response.country.name or "Unknown"
-                  country_ips[country].append(ip)
-              except:
-                  country_ips["Unknown"].append(ip)
-
-          # 关闭数据库连接
-          reader.close()
-
-          # 写入总的IP列表
-          with open("proxy_ips/ip_list.txt", "w") as f:
+          with geoip2.database.Reader("data/GeoLite2-Country.mmdb") as reader:
+              # 处理所有IP
+              valid_ips = []
               for proxy in data["proxies"]:
                   ip = proxy["ip"]
+                  # 首先检查是否是 Cloudflare IP
+                  if is_cloudflare_ip(ip):
+                      continue
+                      
                   try:
+                      # 获取 IP 信息
                       response = reader.country(ip)
-                      if hasattr(response, "traits") and hasattr(response.traits, "autonomous_system_number"):
-                          if response.traits.autonomous_system_number in CLOUDFLARE_ASNS:
-                              continue
-                      f.write(f"{ip}\n")
+                      country = response.country.name or "Unknown"
+                      country_ips[country].append(ip)
+                      valid_ips.append(ip)
                   except:
+                      country_ips["Unknown"].append(ip)
+                      valid_ips.append(ip)
+
+              # 写入总的IP列表
+              with open("proxy_ips/ip_list.txt", "w") as f:
+                  for ip in valid_ips:
                       f.write(f"{ip}\n")
 
-          # 为每个国家创建单独的文件
-          for country, ips in country_ips.items():
-              filename = f"proxy_ips/ips_{country.lower().replace(" ", "_")}.txt"
-              with open(filename, "w") as f:
-                  for ip in ips:
-                      f.write(f"{ip}\n")
+              # 为每个国家创建单独的文件
+              for country, ips in country_ips.items():
+                  filename = f"proxy_ips/ips_{country.lower().replace(" ", "_")}.txt"
+                  with open(filename, "w") as f:
+                      for ip in ips:
+                          f.write(f"{ip}\n")
           '
           
       - name: Commit and push if changed
