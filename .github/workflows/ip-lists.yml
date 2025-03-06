@@ -23,22 +23,51 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U requests
+          pip install -U requests geoip2
+          wget https://github.com/P3TERX/GeoLite.mmdb/raw/download/GeoLite2-Country.mmdb
           
       - name: Download and process IP list
         run: |
           python3 -c '
           import json
           import requests
-          
+          import geoip2.database
+          from collections import defaultdict
+
           # 下载IP列表
           response = requests.get("https://ip.rdone.me/list")
           data = response.json()
-          
-          # 提取IP地址并写入文件
+
+          # 创建国家分类字典
+          country_ips = defaultdict(list)
+
+          # 使用 GeoIP2 数据库
+          reader = geoip2.database.Reader("GeoLite2-Country.mmdb")
+
+          # 对IP进行分类
+          for proxy in data["proxies"]:
+              ip = proxy["ip"]
+              try:
+                  response = reader.country(ip)
+                  country = response.country.name or "Unknown"
+                  country_ips[country].append(ip)
+              except:
+                  country_ips["Unknown"].append(ip)
+
+          # 关闭数据库连接
+          reader.close()
+
+          # 写入总的IP列表
           with open("ip_list.txt", "w") as f:
               for proxy in data["proxies"]:
                   f.write(f"{proxy["ip"]}\n")
+
+          # 为每个国家创建单独的文件
+          for country, ips in country_ips.items():
+              filename = f"ips_{country.lower().replace(" ", "_")}.txt"
+              with open(filename, "w") as f:
+                  for ip in ips:
+                      f.write(f"{ip}\n")
           '
           
       - name: Commit and push if changed
@@ -46,6 +75,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add ip_list.txt
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update IP list" && git push)
+          git add ips_*.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update IP list with country classification" && git push)
         env:
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
