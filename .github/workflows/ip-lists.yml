@@ -39,6 +39,7 @@ jobs:
           import os
           import ipaddress
           from collections import defaultdict
+          import datetime
 
           # Cloudflare IP 范围 (来自 XIU2/CloudflareSpeedTest)
           CLOUDFLARE_IPS = [
@@ -114,6 +115,23 @@ jobs:
                   for ip in valid_ips:
                       f.write(f"{ip}\n")
 
+              # 创建JSON格式数据
+              json_data = {
+                  "updated_at": datetime.datetime.utcnow().isoformat(),
+                  "total_ips": len(valid_ips),
+                  "countries": {
+                      country: {
+                          "count": len(ips),
+                          "ips": ips
+                      }
+                      for country, ips in country_ips.items()
+                  }
+              }
+              
+              # 写入JSON文件
+              with open("proxy_ips/ip_list.json", "w", encoding='utf-8') as f:
+                  json.dump(json_data, f, indent=2, ensure_ascii=False)
+
               # 为每个国家创建单独的文件
               for country_code, ips in country_ips.items():
                   filename = f"proxy_ips/{country_code.lower()}.txt"
@@ -127,6 +145,7 @@ jobs:
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add proxy_ips/ip_list.txt
+          git add proxy_ips/ip_list.json
           git add proxy_ips/*.txt
           if [ -n "$(git status --porcelain)" ]; then
             git commit -m "Update IP list with country classification"
