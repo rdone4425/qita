@@ -1,0 +1,47 @@
+name: Update IP List
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # 每12小时执行一次
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  update-ip-list:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          
+      - name: Download and process IP list
+        run: |
+          python3 - <<EOF
+          import json
+          import requests
+          
+          # 下载IP列表
+          response = requests.get('https://ip.rdone.me/list')
+          data = response.json()
+          
+          # 提取IP地址并写入文件
+          with open('ip_list.txt', 'w') as f:
+              for proxy in data['proxies']:
+                  f.write(f"{proxy['ip']}\n")
+          EOF
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+          
+      - name: Commit and push if changed
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add ip_list.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update IP list" && git push)
