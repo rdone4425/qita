@@ -80,8 +80,8 @@ jobs:
           git config --local user.name "github-actions[bot]"
           git add proxy_ips/
           if [ -n "$(git status --porcelain)" ]; then
-            git pull --rebase
             git commit -m "Update IP list with country classification"
+            git pull --rebase
             git push
           fi
         env:
