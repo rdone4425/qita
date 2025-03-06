@@ -32,7 +32,11 @@ jobs:
           import json
           import requests
           import geoip2.database
+          import os
           from collections import defaultdict
+
+          # 创建目录
+          os.makedirs("proxy_ips", exist_ok=True)
 
           # 下载IP列表
           response = requests.get("https://ip.rdone.me/list")
@@ -58,13 +62,13 @@ jobs:
           reader.close()
 
           # 写入总的IP列表
-          with open("ip_list.txt", "w") as f:
+          with open("proxy_ips/ip_list.txt", "w") as f:
               for proxy in data["proxies"]:
                   f.write(f"{proxy["ip"]}\n")
 
           # 为每个国家创建单独的文件
           for country, ips in country_ips.items():
-              filename = f"ips_{country.lower().replace(" ", "_")}.txt"
+              filename = f"proxy_ips/ips_{country.lower().replace(" ", "_")}.txt"
               with open(filename, "w") as f:
                   for ip in ips:
                       f.write(f"{ip}\n")
@@ -74,8 +78,11 @@ jobs:
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add ip_list.txt
-          git add ips_*.txt
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Update IP list with country classification" && git push)
+          git add proxy_ips/
+          if [ -n "$(git status --porcelain)" ]; then
+            git pull --rebase
+            git commit -m "Update IP list with country classification"
+            git push
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
