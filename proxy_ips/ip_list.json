@@ -1,15 +1,15 @@
 {
-  "updated_at": "2025-03-07T01:37:49.128972+00:00",
-  "total_ips": 857,
+  "updated_at": "2025-03-07T12:38:17.404865+00:00",
+  "total_ips": 862,
   "countries": {
-    "JP": {
-      "count": 61
-    },
     "US": {
-      "count": 345
+      "count": 349
     },
     "KR": {
-      "count": 130
+      "count": 131
+    },
+    "JP": {
+      "count": 61
     },
     "FR": {
       "count": 5
