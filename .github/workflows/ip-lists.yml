@@ -151,8 +151,11 @@ jobs:
           git add proxy_ips/ip_list.json
           git add proxy_ips/*.txt
           if [ -n "$(git status --porcelain)" ]; then
-            git commit -m "Update IP list with country classification"
+            # 先拉取最新代码
             git pull --rebase
+            # 然后提交更改
+            git commit -m "Update IP list with country classification"
+            # 最后推送
             git push
           fi
         env:
