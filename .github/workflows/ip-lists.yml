@@ -141,18 +141,6 @@ jobs:
                   with open(filename, "w") as f:
                       for ip in ips:
                           f.write(f"{ip}\n")
-
-          def update_cloudflare_ips():
-              try:
-                  response = requests.get('https://api.cloudflare.com/client/v4/ips')
-                  if response.status_code == 200:
-                      data = response.json()
-                      if data['success']:
-                          global CLOUDFLARE_IPS, cf_networks
-                          CLOUDFLARE_IPS = data['result']['ipv4_cidrs'] + data['result']['ipv6_cidrs']
-                          cf_networks = [ipaddress.ip_network(cidr) for cidr in CLOUDFLARE_IPS]
-              except Exception as e:
-                  print(f"Failed to update Cloudflare IPs: {e}")
           '
           
       - name: Commit and push if changed
