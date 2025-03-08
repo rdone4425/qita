@@ -147,15 +147,15 @@ jobs:
         run: |
           git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+          # 先拉取最新代码
+          git pull --rebase
+          # 然后添加更改
           git add proxy_ips/ip_list.txt
           git add proxy_ips/ip_list.json
           git add proxy_ips/*.txt
+          # 检查是否有更改需要提交
           if [ -n "$(git status --porcelain)" ]; then
-            # 先拉取最新代码
-            git pull --rebase
-            # 然后提交更改
             git commit -m "Update IP list with country classification"
-            # 最后推送
             git push
           fi
         env:
