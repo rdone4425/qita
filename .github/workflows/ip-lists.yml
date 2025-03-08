@@ -43,6 +43,10 @@ jobs:
           from datetime import UTC
           import glob
 
+          # 获取代理IP列表
+          response = requests.get("https://ip.rdone.me/list")
+          data = response.json()
+
           # Cloudflare IP 范围 (来自 XIU2/CloudflareSpeedTest)
           CLOUDFLARE_IPS = [
               "173.245.48.0/20",
