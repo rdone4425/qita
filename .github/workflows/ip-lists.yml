@@ -41,6 +41,7 @@ jobs:
           from collections import defaultdict
           import datetime
           from datetime import UTC
+          import glob
 
           # Cloudflare IP 范围 (来自 XIU2/CloudflareSpeedTest)
           CLOUDFLARE_IPS = [
@@ -81,12 +82,10 @@ jobs:
               except:
                   return False
 
-          # 创建目录
-          os.makedirs("proxy_ips", exist_ok=True)
-
-          # 下载IP列表
-          response = requests.get("https://ip.rdone.me/list")
-          data = response.json()
+          # 在处理IP之前，先清理旧文件
+          old_files = glob.glob("proxy_ips/*.txt")
+          for file in old_files:
+              os.remove(file)
 
           # 创建国家分类字典
           country_ips = defaultdict(list)
@@ -121,7 +120,7 @@ jobs:
                   "updated_at": datetime.datetime.now(UTC).isoformat(),
                   "total_ips": len(valid_ips),
                   "countries": {
-                      country: {
+                      country.upper(): {  # 确保国家代码大写
                           "count": len(ips)
                       }
                       for country, ips in country_ips.items()
@@ -132,12 +131,24 @@ jobs:
               with open("proxy_ips/ip_list.json", "w", encoding="utf-8") as f:
                   json.dump(json_data, f, indent=2, ensure_ascii=False)
 
-              # 为每个国家创建单独的文件
+              # 为每个国家创建单独的文件（使用大写文件名）
               for country_code, ips in country_ips.items():
-                  filename = f"proxy_ips/{country_code.lower()}.txt"
+                  filename = f"proxy_ips/{country_code.upper()}.txt"  # 使用大写文件名
                   with open(filename, "w") as f:
                       for ip in ips:
                           f.write(f"{ip}\n")
+
+          def update_cloudflare_ips():
+              try:
+                  response = requests.get('https://api.cloudflare.com/client/v4/ips')
+                  if response.status_code == 200:
+                      data = response.json()
+                      if data['success']:
+                          global CLOUDFLARE_IPS, cf_networks
+                          CLOUDFLARE_IPS = data['result']['ipv4_cidrs'] + data['result']['ipv6_cidrs']
+                          cf_networks = [ipaddress.ip_network(cidr) for cidr in CLOUDFLARE_IPS]
+              except Exception as e:
+                  print(f"Failed to update Cloudflare IPs: {e}")
           '
           
       - name: Commit and push if changed
