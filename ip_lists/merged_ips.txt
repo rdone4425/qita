@@ -44,14 +44,14 @@
 <img alt="404" src="/assets/illustrations/error/error-404-lg-9dfb20cc79e1fe8104e0adb122a710283a187b075b15187e2f184d936a16349c.svg" />
 <input type="search" name="search" id="search" value="" placeholder="Search for projects, issues, etc." class="form-control" />
 <li>
-<link rel="stylesheet" href="/assets/application-c67934b4742bd5c01a3c5623e9f8858d1d0145bcf0da89f9031dae3685a601f7.css" />
+<link rel="stylesheet" href="/assets/application-17a33cd53bce9f37d7f651fe5a2c95859513f80736807934eb0fec9e641bc31d.css" />
 <link rel="stylesheet" href="/assets/errors-ac6a7e284e24d2fe8bd57b1d43e9a307ef3116852bf6dadfca24360610e938bc.css" />
 <link rel="stylesheet" href="/assets/fonts-fae5d3f79948bd85f18b6513a025f863b19636e85b09a1492907eb4b1bb0557b.css" />
 <link rel="stylesheet" href="/assets/tailwind-3896762f7fbf2d137c182792b2664e97502b3cce4c0f1bd9b0685ed1d541bd6d.css" />
 <meta content="width=device-width, initial-scale=1" name="viewport">
 <nav>
 <p>
-<script nonce="Yc04eJFfApKbNhzJiFqosA==">
+<script nonce="wJx1RMixvrVtnNMgiXjEYw==">
 <title>Not Found</title>
 <ul class="error-nav">
 Make sure the address is correct and the page has not moved.
