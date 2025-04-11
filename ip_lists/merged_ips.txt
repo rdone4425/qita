@@ -47,11 +47,11 @@
 <link rel="stylesheet" href="/assets/application-2d41a6424a07717cdfc59340d1fd3200484026c592edea9a097119441657bb0d.css" />
 <link rel="stylesheet" href="/assets/errors-ac6a7e284e24d2fe8bd57b1d43e9a307ef3116852bf6dadfca24360610e938bc.css" />
 <link rel="stylesheet" href="/assets/fonts-fae5d3f79948bd85f18b6513a025f863b19636e85b09a1492907eb4b1bb0557b.css" />
-<link rel="stylesheet" href="/assets/tailwind-5ab641d7632150753d306cc7b2d6637d2eab25778b924c5f10f3256dd0774edc.css" />
+<link rel="stylesheet" href="/assets/tailwind-a2b7f5a7eb0fcc3b021fef8d949abb65ecca2da7d05f7a5a7d0307d389c81f58.css" />
 <meta content="width=device-width, initial-scale=1" name="viewport">
 <nav>
 <p>
-<script nonce="t5uyEZkgW1q1cLHgHgtJlA==">
+<script nonce="eve93lQ2oo6GIf9DhiuLuQ==">
 <title>Not Found</title>
 <ul class="error-nav">
 Make sure the address is correct and the page has not moved.
