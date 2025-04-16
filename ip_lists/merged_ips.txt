@@ -44,14 +44,14 @@
 <img alt="404" src="/assets/illustrations/error/error-404-lg-9dfb20cc79e1fe8104e0adb122a710283a187b075b15187e2f184d936a16349c.svg" />
 <input type="search" name="search" id="search" value="" placeholder="Search for projects, issues, etc." class="form-control" />
 <li>
-<link rel="stylesheet" href="/assets/application-ce303141b325741135639d0e7d21dd5cce821023b6ef352d6162b8a579924530.css" />
-<link rel="stylesheet" href="/assets/errors-ac6a7e284e24d2fe8bd57b1d43e9a307ef3116852bf6dadfca24360610e938bc.css" />
+<link rel="stylesheet" href="/assets/application-96e6968ca2047410c13e21e25a62442ea57ce87f225a0c2ccd90e8c94194c917.css" />
+<link rel="stylesheet" href="/assets/errors-5dac107292327b289cc43bfc65d05b0afcd9c781a435c71e0c2d8d7cacaf2f8e.css" />
 <link rel="stylesheet" href="/assets/fonts-fae5d3f79948bd85f18b6513a025f863b19636e85b09a1492907eb4b1bb0557b.css" />
-<link rel="stylesheet" href="/assets/tailwind-4a23d84d2e068fa9f546b688b2ff9cf7ac0a35cfada7a66d8d503b313163d5ab.css" />
+<link rel="stylesheet" href="/assets/tailwind-2eb913f7a6cbcc3f4bc728ee22c7df373dddff5660115938680efb12fc94f689.css" />
 <meta content="width=device-width, initial-scale=1" name="viewport">
 <nav>
 <p>
-<script nonce="0m8oaLEbUgQyt6hYTnkvOw==">
+<script nonce="ZMGHLKbT36QY+XLEMLZzEw==">
 <title>Not Found</title>
 <ul class="error-nav">
 Make sure the address is correct and the page has not moved.
