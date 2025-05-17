@@ -51,7 +51,7 @@
 <meta content="width=device-width, initial-scale=1" name="viewport">
 <nav>
 <p>
-<script nonce="oNII7VPYQX8rkBaJbyfwSw==">
+<script nonce="F41RNNzmT+Xedqa8OGgGqQ==">
 <title>Not Found</title>
 <ul class="error-nav">
 Make sure the address is correct and the page has not moved.
