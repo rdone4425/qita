@@ -44,14 +44,14 @@
 <img alt="404" src="/assets/illustrations/error/error-404-lg-9dfb20cc79e1fe8104e0adb122a710283a187b075b15187e2f184d936a16349c.svg" />
 <input type="search" name="search" id="search" value="" placeholder="Search for projects, issues, etc." class="form-control" />
 <li>
-<link rel="stylesheet" href="/assets/application-e97492124bd2be62ad52649c07468ead2dfc96bc00501beede3f1d40a8cdf5c3.css" />
+<link rel="stylesheet" href="/assets/application-db2a4a19e2bef9b6ea0a2f4765bc6508247bce6e739c3048d6721a6d365f73ea.css" />
 <link rel="stylesheet" href="/assets/errors-814dbc1ac835b29221b9db667ed8344b5bdde0c799a8b69de6c7fee524e9fab0.css" />
 <link rel="stylesheet" href="/assets/fonts-fae5d3f79948bd85f18b6513a025f863b19636e85b09a1492907eb4b1bb0557b.css" />
-<link rel="stylesheet" href="/assets/tailwind-2aaf357da113519cdfd05712db5ce712ce42a9e8a57d3c7c737c8bc97e19eb52.css" />
+<link rel="stylesheet" href="/assets/tailwind-d9635d09e41d6b8b9d514f7842dbdea510b7b7dcebeea9023b10881af499ef6f.css" />
 <meta content="width=device-width, initial-scale=1" name="viewport">
 <nav>
 <p>
-<script nonce="JBs9w+5u6PBIEFgLy4aafA==">
+<script nonce="6UYz3UXJhA++jIxshO4JXA==">
 <title>Not Found</title>
 <ul class="error-nav">
 Make sure the address is correct and the page has not moved.
